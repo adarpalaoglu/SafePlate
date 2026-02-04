@@ -281,9 +281,9 @@ The deprecated notebook remains in `notebooks/` for reference but should not be 
 The following work remains:
 
 0. **COMPLETED: Group integration testing migrated to `tests/test_group_integration.py`** (6 tests, all passing).
-1. **Wire into notebook 04:** The trigger detection notebook currently produces `(ingredient, U, V)` tuples independently. It needs a final cell that passes these into `run_shrinkage()` and uses the `FullShrinkageOutput` as the trigger list.
-2. **Update recommendation engine:** The group-aware filtering methods in `recommendation_engine.py` currently accept raw trigger lists. They should be updated to accept `FullShrinkageOutput` and use the `confidence` labels to weight or filter recommendations.
-3. **Build synthetic test lab:** Controlled scenarios with known ground-truth triggers to validate end-to-end system behaviour (false-negative rate, false-positive rate, ranking quality).
+1. **COMPLETED: Integrated pipeline built** (`backend/safeplate/integrated_pipeline.py`, 233 lines). Connects notebook 04's CSV output to the shrinkage model and recommendation engine via a reusable `SafePlatePipeline` class. See Section 7 for details.
+2. **COMPLETED: End-to-end validation** (`notebooks/06_test_integrated_pipeline.ipynb`, 20 cells). Validated with real data: 25 tested ingredients, 426 total after propagation, 1 protected safe, substitution recommendations working.
+3. **Build synthetic test lab:** Controlled scenarios with known ground-truth triggers to validate end-to-end system behaviour (false-negative rate, false-positive rate, ranking quality). The integrated pipeline API (`SafePlatePipeline`) is the entry point for this work.
 4. **Flask web UI:** Demonstration interface for the dissertation evaluation.
 
 ### 6.4 Lessons Learned: Notebooks vs Scripts
@@ -316,15 +316,111 @@ Both are pure Python scripts that can be run with `python tests/<filename>.py` a
 
 ---
 
-## 7. Dissertation Implications
+## 7. Integrated Pipeline Implementation
 
-### 7.1 Contributions to State in the Dissertation
+### 7.1 Motivation and Design Rationale
+
+The three core components of the SafePlate system — case-crossover trigger detection (notebook 04), empirical Bayes shrinkage (`group_aware_trigger_detector.py`), and embedding-based recommendation (`recommendation_engine.py`) — had each been validated independently but operated in isolation. No programmatic pathway existed to move from raw diary data through trigger detection and shrinkage to safe-substitute recommendations. This gap prevented end-to-end validation of the system and blocked the planned synthetic test lab and Flask web UI from being built.
+
+The integration was implemented as a reusable Python module (`backend/safeplate/integrated_pipeline.py`, 233 lines) rather than as additional notebook cells. This decision was informed by the experience with notebook `05b_test_group_integration.ipynb` (see Section 6.4): notebook code is tightly coupled to the API state at the time it is written and is fragile to refactoring. A Python module provides a stable import target for the test lab, the Flask UI, and any future consumers, while remaining testable with standard tooling. A companion validation notebook (`notebooks/06_test_integrated_pipeline.ipynb`, 20 cells) demonstrates the end-to-end flow and validates edge cases, but the notebook is a *consumer* of the module, not the implementation itself.
+
+The module was designed around the principle of *integration without refactoring*. Notebook 04's case-crossover logic is complex (multi-cell, with Bayesian posterior estimation, family-level pooling, and FDR correction) and has been validated against synthetic diary data. Refactoring it into a Python module would introduce risk without immediate benefit. Instead, the pipeline consumes notebook 04's CSV output (`ingredient_stats_all.csv`) as a stable interface contract. This separation of concerns mirrors standard data-engineering practice: the case-crossover step is a data-generation pipeline, and the integration layer is a downstream consumer. Refactoring notebook 04 into a callable module can be deferred to the test lab implementation, when the API requirements are clearer.
+
+### 7.2 Implementation: `integrated_pipeline.py`
+
+The module defines two public components: `PipelineConfig` and `SafePlatePipeline`.
+
+`PipelineConfig` is a dataclass that encapsulates all decision thresholds in a single location, eliminating magic numbers from the pipeline logic and making sensitivity analysis straightforward. It has four fields: `trigger_or_threshold` (default 1.0, the minimum `final_OR` to flag an ingredient as a trigger), `trigger_min_confidence` (default `"MEDIUM"`, the minimum confidence level for trigger inclusion), `propagate_to_untested` (default `True`, whether untested group members inherit `μ_g`), and `recommendation_top_n` (default 10, the number of substitutes to return). The `trigger_min_confidence` field is validated at construction time to be one of `"HIGH"`, `"MEDIUM"`, or `"LOW"`.
+
+`SafePlatePipeline` orchestrates the three core components through five public methods:
+
+**`detect_triggers_from_stats(ingredient_stats)`** validates that the input DataFrame contains the required columns (`ingredient`, `U_case_not_ctrl`, `V_ctrl_not_case`), converts it to the row-dict format expected by `GroupAwareTriggerDetector.run_shrinkage_from_dataframe_rows()`, and returns the `FullShrinkageOutput`. The method raises `ValueError` with a clear diagnostic message if the DataFrame is empty or missing columns.
+
+**`get_trigger_ingredients(shrinkage_result)`** extracts ingredient names where `final_OR` meets or exceeds the configured threshold and `confidence` meets or exceeds the configured minimum level. Confidence levels are ranked ordinally (`HIGH` > `MEDIUM` > `LOW`). Protected-safe ingredients are excluded regardless of their OR because they have statistically significant safety evidence.
+
+**`get_safe_substitutes(query_ingredient, shrinkage_result, top_n)`** composes the trigger list from `get_trigger_ingredients()` and passes it as the exclusion filter to `RecommendationEngine.find_substitutes()`. The result is a list of `(ingredient_name, similarity_score)` tuples ranked by Node2Vec cosine similarity, with all trigger ingredients removed.
+
+**`get_pipeline_summary(shrinkage_result)`** aggregates counts of tested, untested, protected-safe, and trigger ingredients, along with confidence-level distributions and the trigger and protected-safe ingredient lists. This method provides a single-call overview suitable for reporting tables and notebook output.
+
+### 7.3 Validation: Notebook 06
+
+Notebook `06_test_integrated_pipeline.ipynb` demonstrates the end-to-end flow and validates that the pipeline handles both typical and edge-case scenarios correctly. The notebook loads `ingredient_stats_all.csv` (25 ingredients from the synthetic diary used in notebook 04), initialises the pipeline with the real embedding and group data, runs `detect_triggers_from_stats()`, and exercises all four downstream methods.
+
+The validation run produced the following results. Of the 25 tested ingredients, 1 was protected safe (tomato: `U = 0`, `V = 5`, `OR = 0.091`), confirming that Rule 1 correctly prevents upward shrinkage for an ingredient with significant safety evidence. After group propagation, the output contained 426 total ingredients (401 untested group members inheriting `μ_g` with `confidence = "LOW"` and `evidence_source = "group_mean"`). Substitution recommendations were returned successfully for test queries (`"milk"`, `"tomato"`, `"cheese"`), with trigger ingredients excluded from the results. Error handling was verified for three failure modes: missing CSV file, empty DataFrame, and DataFrame with incorrect columns.
+
+The notebook also includes a comparison table of raw OR versus shrunk OR for all tested ingredients, illustrating which ingredients were most affected by shrinkage and in which direction. This table provides material for a dissertation figure showing the bias-variance trade-off of the empirical Bayes estimator.
+
+### 7.4 Design Decisions and Justifications
+
+Five key design decisions were made during the pipeline implementation, each with a clear rationale.
+
+**Trigger threshold rule.** An ingredient is classified as a trigger if `final_OR >= 1.0` and `confidence >= "MEDIUM"`. The OR threshold at 1.0 reflects the epidemiological convention that an odds ratio above parity indicates positive association with the outcome. The confidence threshold at `"MEDIUM"` excludes only `"LOW"` confidence results, which are untested group-mean inheritors with no direct evidence. This default is conservative: it includes shrunk ingredients with some evidence but excludes pure extrapolation. Both thresholds are configurable via `PipelineConfig`, enabling sensitivity analysis during evaluation.
+
+**Protected-safe handling in recommendations.** Protected-safe ingredients are *not* excluded from substitution results. They have statistically significant safety evidence and are therefore valid (indeed, desirable) substitutes. The `protected` flag is metadata for transparency, not a filtering criterion. A future enhancement could re-rank results to prioritise protected-safe ingredients, but this is not necessary for the current validation.
+
+**CSV hand-off from notebook 04.** The pipeline reads notebook 04's CSV output rather than invoking the case-crossover logic programmatically. This provides clean separation of concerns and avoids the risk of introducing bugs by refactoring validated notebook code. The limitation — that notebook 04 must be run manually before the pipeline can be used — is acceptable at this stage and will be addressed when the synthetic test lab requires automated end-to-end execution.
+
+**Error handling strategy.** The pipeline fails fast with clear error messages rather than silently substituting defaults. A missing CSV file produces a `FileNotFoundError` instructing the user to run notebook 04. Wrong column names produce a `ValueError` listing expected versus actual columns. A query ingredient not in the embeddings raises `IngredientNotFoundError`. This approach prioritises debuggability over convenience, which is appropriate for a research prototype.
+
+**No cap on untested member inheritance.** Consistent with Section 4.5, untested group members receive `final_OR = exp(μ_g)` without clipping. The `"LOW"` confidence label is the correct mechanism for signalling uncertainty to the pipeline's trigger extraction logic, which respects the `trigger_min_confidence` threshold.
+
+### 7.5 Integration with Existing Components
+
+The pipeline interacts with four existing modules, all through their documented public APIs. No modifications to any existing file were required.
+
+`GroupAwareTriggerDetector` is called via `run_shrinkage_from_dataframe_rows()`, which accepts a list of row dictionaries with keys matching notebook 04's column names. The `propagate_to_groups` flag is set from `PipelineConfig.propagate_to_untested`, controlling whether untested group members receive `μ_g`. The detector is initialised with the same `IngredientGroupManager` instance used by the pipeline, ensuring consistent group definitions.
+
+`RecommendationEngine` is called via `find_substitutes()`, which accepts a query ingredient, a list of trigger ingredients to exclude, and a `top_n` count. The trigger list is computed by `get_trigger_ingredients()` from the shrinkage output, closing the loop from statistical inference to practical recommendation.
+
+`IngredientGroupManager` provides group membership data to the detector via `get_all_groups()`. It is injected into the pipeline at construction time and passed to both the detector and (when needed) the recommendation engine.
+
+`EmbeddingLoader` provides Node2Vec embeddings to the recommendation engine. It is injected at construction time and used exclusively through the engine's API.
+
+Notebook 04's output is consumed via the CSV file `data/processed/trigger_detection/ingredient_stats_all.csv`. The pipeline requires only three of the thirteen columns produced by notebook 04 (`ingredient`, `U_case_not_ctrl`, `V_ctrl_not_case`); the remaining columns are informational and are not read.
+
+### 7.6 Testing and Validation Results
+
+Validation was performed at two levels: unit-level checks on the pipeline's input validation and error handling, and integration-level verification of the end-to-end flow with real data.
+
+At the unit level, `PipelineConfig` was verified to reject invalid confidence levels. The `detect_triggers_from_stats()` method was verified to raise `ValueError` for empty DataFrames and for DataFrames missing required columns. Both error messages were confirmed to be diagnostic (listing expected versus actual values).
+
+At the integration level, the complete flow was executed with 25 ingredients from notebook 04's synthetic diary output. The shrinkage model produced 426 total ingredients after group propagation (25 tested, 401 untested inheritors). One ingredient (tomato) was correctly identified as protected safe by Rule 1. Trigger extraction returned the expected set given the configured thresholds. Substitution recommendations were returned for three test queries with trigger ingredients excluded. No unexpected behaviours or errors were observed.
+
+### 7.7 Limitations and Future Work
+
+The pipeline has four known limitations, each with a planned resolution path.
+
+The CSV-based interface with notebook 04 requires manual execution of the notebook before the pipeline can be used. This will be addressed during the synthetic test lab implementation by refactoring notebook 04's case-crossover logic into a callable module (`backend/safeplate/case_crossover.py`), which can be invoked programmatically.
+
+Trigger thresholds are applied uniformly across all ingredients and queries. Per-user or per-query risk tolerance (e.g., "conservative" versus "exploratory" substitution modes) is not yet supported. This could be added as a `PipelineConfig` parameter if time permits.
+
+Protected-safe ingredients are included in substitution results but not prioritised. A future enhancement could re-rank results to boost protected-safe ingredients, signalling their confirmed safety to the user.
+
+The pipeline does not yet produce confidence intervals on the shrunk OR estimates. Adding interval estimates would strengthen the dissertation evaluation by enabling calibration analysis.
+
+### 7.8 Contribution to Dissertation
+
+The integrated pipeline makes four contributions to the dissertation.
+
+*Methodological.* It demonstrates a working end-to-end system that integrates within-person causal inference (case-crossover), empirical Bayes hierarchical modelling (DerSimonian & Laird shrinkage), and representation learning (Node2Vec similarity). This combination is novel in the dietary trigger detection domain.
+
+*Technical.* It provides a reusable API for trigger-aware recommendation that handles sparse N-of-1 data at scale (25 tested ingredients evaluated alongside 401 untested group members). The threshold-based trigger extraction is transparent and configurable, avoiding opaque decision boundaries.
+
+*Evaluation.* Notebook 06 provides the validation framework for dissertation figures and tables, including the raw-versus-shrunk OR comparison, the confidence-level distribution, and the edge-case demonstrations (protected safe, untested inheritance, heterogeneous and homogeneous groups).
+
+*Practical.* The pipeline is the foundation for the next implementation phase (synthetic test lab with known ground-truth triggers). It can also be used directly in a Flask web UI if one is implemented for the dissertation demonstration.
+
+---
+
+## 8. Dissertation Implications
+
+### 8.1 Contributions to State in the Dissertation
 
 1. **Application of empirical Bayes hierarchical shrinkage to within-person case-crossover data.** This specific combination — N-of-1 case-crossover producing discordant counts, grouped by food category, with DerSimonian & Laird pooling — is a novel application of an established statistical technique to the dietary trigger detection problem.
 2. **Two-rule guard system** that prevents false-positive trigger labels (protecting confirmed-safe ingredients) while simultaneously reducing false negatives (through group-level borrowing of strength). The ordered application — protect first, then shrink — is a methodological contribution.
 3. **Explicit handling of untested group members** with calibrated confidence labels. This addresses a practical gap in existing dietary trigger systems, where ingredients never eaten by the user cannot be assessed for risk.
 
-### 7.2 Limitations to State Explicitly
+### 8.2 Limitations to State Explicitly
 
 The dissertation must acknowledge the following limitations:
 
@@ -333,7 +429,7 @@ The dissertation must acknowledge the following limitations:
 - **Case-crossover controls for stable confounders but not time-varying ones.** Within-person comparison eliminates between-person confounding, but time-varying factors (stress, medication changes, seasonal allergen exposure) could still bias the estimates.
 - **The method is designed for sparse data.** With dense diary data (hundreds of discordant pairs per ingredient), individual-level estimates are already stable, and the shrinkage model provides less benefit. The primary value is in the sparse-data regime typical of short-duration food diaries.
 
-### 7.3 Evaluation Plan (for Future Work Section)
+### 8.3 Evaluation Plan (for Future Work Section)
 
 The planned validation approach includes:
 
@@ -344,16 +440,16 @@ The planned validation approach includes:
 
 ---
 
-## 8. Code Quality and Documentation
+## 9. Code Quality and Documentation
 
-### 8.1 Citation and Academic Integrity
+### 9.1 Citation and Academic Integrity
 
 - DerSimonian & Laird (1986) is cited in the module docstring with the full bibliographic reference.
 - The term "empirical Bayes" is used throughout; the unqualified term "Bayesian" does not appear anywhere in the module. This distinction is important: the model estimates `μ_g` and `τ²` from the data (empirical Bayes) rather than placing a prior distribution on them (fully Bayesian).
 - All statistical assumptions are stated explicitly in function docstrings: the D&L function documents that it is a point-estimation procedure (not fully Bayesian), that inputs are non-protected pool members only, and that the `τ²` floor at zero is part of the original formula.
 - The Rule 1 function documents why the test is one-sided, why 0.05 is the threshold, and what both conditions mean.
 
-### 8.2 Dependencies and Portability
+### 9.2 Dependencies and Portability
 
 The module uses only:
 
@@ -366,16 +462,17 @@ No scipy, pandas, or other heavy dependencies are required. All computation is c
 
 ---
 
-## 9. Timeline and Effort
+## 10. Timeline and Effort
 
 - **Design phase:** February 3, 2026 (design review and specification of the statistical model, input/output contracts, and test cases).
-- **Implementation:** February 3, 2026 (complete rewrite of `group_aware_trigger_detector.py`).
-- **Testing:** February 3, 2026 (all 10 tests written and passing in the same session).
-- **Total lines of code:** 564 (main module) + 470 (test suite) = 1,034 lines.
+- **Shrinkage implementation:** February 3, 2026 (complete rewrite of `group_aware_trigger_detector.py`).
+- **Shrinkage testing:** February 3, 2026 (all 10 tests written and passing in the same session).
+- **Integration pipeline:** February 4, 2026 (`integrated_pipeline.py` and notebook 06, validated end-to-end).
+- **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) = ~1,403 lines of production and test code.
 
 ---
 
-## 10. References
+## 11. References
 
 DerSimonian, R. & Laird, N. (1986). Meta-analysis in clinical trials. *Controlled Clinical Trials*, 7(3), 177–188.
 
@@ -396,6 +493,7 @@ SafePlate/
 ├── backend/
 │   └── safeplate/
 │       ├── group_aware_trigger_detector.py    [REWRITTEN, ~450 lines]
+│       ├── integrated_pipeline.py             [NEW, 233 lines]
 │       ├── ingredient_groups.py               [Unchanged]
 │       ├── recommendation_engine.py           [Unchanged]
 │       ├── embedding_loader.py                [Unchanged]
@@ -405,14 +503,17 @@ SafePlate/
 │   └── test_group_integration.py              [NEW, 6 test functions]
 ├── data/
 │   └── processed/
-│       └── ingredient_groups.csv              [Unchanged, 2698 rows]
+│       ├── ingredient_groups.csv              [Unchanged, 2698 rows]
+│       └── trigger_detection/
+│           └── ingredient_stats_all.csv       [From notebook 04]
 ├── docs/
 │   └── POST_PROGRESS_REPORT_TECHNICAL_LOG.md  [THIS DOCUMENT]
 └── notebooks/
-    ├── 04_trigger_detection_recommended.ipynb  [Unchanged, produces U/V]
+    ├── 04_trigger_detection_recommended.ipynb  [Unchanged, produces ingredient_stats]
     ├── 05_test_recommendation_engine.ipynb     [Unchanged]
     ├── 05b_test_group_integration.ipynb        [DEPRECATED, do not run]
-    └── 05b_DEPRECATED_USE_PYTHON_SCRIPT.txt   [Deprecation notice]
+    ├── 05b_DEPRECATED_USE_PYTHON_SCRIPT.txt   [Deprecation notice]
+    └── 06_test_integrated_pipeline.ipynb       [NEW, 20 cells]
 ```
 
 ---
@@ -445,8 +546,20 @@ output.to_dict()                         # JSON-serialisable dictionary
 
 **Key insight:** `wᵢ = τ² / (τ² + σᵢ²)`. When data are sparse (`σᵢ²` large), `wᵢ` is small, and the ingredient borrows heavily from the group mean `μ_g`. When data are rich (`σᵢ²` small), `wᵢ` is large, and the ingredient trusts its own estimate. `τ²` is estimated adaptively from the data via D&L, not set by hand.
 
+**Integrated pipeline:** `backend/safeplate/integrated_pipeline.py` connects case-crossover output to shrinkage to recommendation. Usage:
+
+```python
+from safeplate.integrated_pipeline import SafePlatePipeline, PipelineConfig
+
+pipeline = SafePlatePipeline(embedding_loader=loader, group_manager=gm)
+result = pipeline.detect_triggers_from_stats(ingredient_stats)
+substitutes = pipeline.get_safe_substitutes("milk", result)
+```
+
+Notebook 06 validates end-to-end: 25 tested → 426 total, 1 protected safe (tomato).
+
 **Tests pass:**
 - `test_shrinkage.py`: All 10 edge cases verified. Run with: `python tests/test_shrinkage.py`
 - `test_group_integration.py`: All 6 integration tests verified. Run with: `python tests/test_group_integration.py`
 
-**Next step:** Integrate into notebook 04, then build synthetic test lab for end-to-end validation.
+**Next step:** Build synthetic test lab with known ground-truth triggers (uses `SafePlatePipeline` API).
