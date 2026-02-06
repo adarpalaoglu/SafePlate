@@ -412,7 +412,7 @@ The integrated pipeline makes four contributions to the dissertation.
 
 ---
 
-## 8. Dissertation Implications
+## 9. Dissertation Implications
 
 ### 8.1 Contributions to State in the Dissertation
 
@@ -440,7 +440,7 @@ The planned validation approach includes:
 
 ---
 
-## 9. Code Quality and Documentation
+## 10. Code Quality and Documentation
 
 ### 9.1 Citation and Academic Integrity
 
@@ -462,17 +462,18 @@ No scipy, pandas, or other heavy dependencies are required. All computation is c
 
 ---
 
-## 10. Timeline and Effort
+## 11. Timeline and Effort
 
 - **Design phase:** February 3, 2026 (design review and specification of the statistical model, input/output contracts, and test cases).
 - **Shrinkage implementation:** February 3, 2026 (complete rewrite of `group_aware_trigger_detector.py`).
 - **Shrinkage testing:** February 3, 2026 (all 10 tests written and passing in the same session).
 - **Integration pipeline:** February 4, 2026 (`integrated_pipeline.py` and notebook 06, validated end-to-end).
-- **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) = ~1,403 lines of production and test code.
+- **Phase 1 Test Lab:** February 6, 2026 (4 new modules: diary generation, case-crossover simulation, user preferences, preference-aware recommendations; notebook 08 validation).
+- **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) + ~920 (Phase 1 Test Lab modules) = ~2,323 lines of production and test code.
 
 ---
 
-## 11. References
+## 12. References
 
 DerSimonian, R. & Laird, N. (1986). Meta-analysis in clinical trials. *Controlled Clinical Trials*, 7(3), 177–188.
 
@@ -494,6 +495,10 @@ SafePlate/
 │   └── safeplate/
 │       ├── group_aware_trigger_detector.py    [REWRITTEN, ~450 lines]
 │       ├── integrated_pipeline.py             [NEW, 233 lines]
+│       ├── diary_generator.py                 [NEW, ~280 lines, Phase 1]
+│       ├── case_crossover_simulator.py        [NEW, ~230 lines, Phase 1]
+│       ├── user_preferences.py                [NEW, ~140 lines, Phase 1]
+│       ├── preference_aware_recommendation.py [NEW, ~270 lines, Phase 1]
 │       ├── ingredient_groups.py               [Unchanged]
 │       ├── recommendation_engine.py           [Unchanged]
 │       ├── embedding_loader.py                [Unchanged]
@@ -502,6 +507,9 @@ SafePlate/
 │   ├── test_shrinkage.py                      [NEW, 10 test functions]
 │   └── test_group_integration.py              [NEW, 6 test functions]
 ├── data/
+│   ├── test_diaries/                          [NEW, Phase 1]
+│   ├── test_results/
+│   │   └── phase1_metrics.json                [NEW, validation metrics]
 │   └── processed/
 │       ├── ingredient_groups.csv              [Unchanged, 2698 rows]
 │       └── trigger_detection/
@@ -513,7 +521,8 @@ SafePlate/
     ├── 05_test_recommendation_engine.ipynb     [Unchanged]
     ├── 05b_test_group_integration.ipynb        [DEPRECATED, do not run]
     ├── 05b_DEPRECATED_USE_PYTHON_SCRIPT.txt   [Deprecation notice]
-    └── 06_test_integrated_pipeline.ipynb       [NEW, 20 cells]
+    ├── 06_test_integrated_pipeline.ipynb       [NEW, 20 cells]
+    └── 08_test_preference_engine.ipynb         [NEW, Phase 1 validation]
 ```
 
 ---
@@ -562,4 +571,116 @@ Notebook 06 validates end-to-end: 25 tested → 426 total, 1 protected safe (tom
 - `test_shrinkage.py`: All 10 edge cases verified. Run with: `python tests/test_shrinkage.py`
 - `test_group_integration.py`: All 6 integration tests verified. Run with: `python tests/test_group_integration.py`
 
-**Next step:** Build synthetic test lab with known ground-truth triggers (uses `SafePlatePipeline` API).
+**Next step:** Phase 2 of Test Lab (Flask web UI demonstration).
+
+---
+
+## 8. Phase 1: Test Lab Backend
+
+### 8.1 Motivation and Design
+
+The synthetic test lab was identified as a critical validation requirement in Section 6.3. To evaluate the trigger detection and recommendation system end-to-end, controlled scenarios with known ground-truth triggers are needed. Phase 1 implements the backend components for this test lab: synthetic diary generation, case-crossover simulation, and preference-aware recommendations with dynamic trigger filtering.
+
+The key insight is that real user data cannot provide ground truth. Users do not know their true triggers — discovering them is the system's purpose. Synthetic data with *planted* triggers solves this problem: if we generate diaries where "cheddar cheese" causes symptoms 60% of the time it is eaten, we can measure whether the pipeline correctly identifies it as a trigger and excludes it from recommendations.
+
+### 8.2 Components Implemented
+
+Four Python modules were created in `backend/safeplate/`:
+
+**`diary_generator.py`** (~280 lines) — Generates synthetic meal and symptom logs with known ground truth. Uses an exposure-driven causal model:
+- `P(symptom | trigger eaten) = trigger_effect_strength` (configurable, default 0.6)
+- `P(symptom | no trigger) = baseline_symptom_rate` (configurable, default 0.05)
+- Negative control ingredient included for false positive validation
+- Reproducible via seed parameter
+
+Key class: `DiaryGenerator` with `DiaryGeneratorConfig` dataclass (12 configurable parameters).
+
+**`case_crossover_simulator.py`** (~230 lines) — Converts diary DataFrames into (U, V) discordant pair statistics suitable for pipeline input. Implements:
+- Hazard/control window matching (day-of-week, time-of-day)
+- Episode clustering (symptoms within gap threshold merged)
+- Per-ingredient discordant pair counting
+
+Key class: `CaseCrossoverSimulator` with `CaseCrossoverConfig` dataclass.
+
+**`user_preferences.py`** (~140 lines) — Persistent storage for user ingredient preference rankings. Features:
+- JSON file persistence
+- Lazy loading with caching
+- CRUD operations: save, get, has, delete, clear
+
+Key classes: `UserPreferenceStore`, `UserRanking` dataclass.
+
+**`preference_aware_recommendation.py`** (~270 lines) — Recommendation engine with dynamic trigger filtering and user preference integration. Algorithm:
+1. Get triggers from shrinkage result (no group expansion per spec)
+2. If user has stored ranking: filter triggers, take top-N safe, backfill from similarity if needed
+3. If no ranking: use similarity-based recommendations, filter triggers
+4. Return `Recommendation` objects with metadata
+
+Key class: `PreferenceAwareRecommendationEngine` with `Recommendation` and `RecommendationExplanation` dataclasses.
+
+### 8.3 Validation Notebook
+
+Notebook `08_test_preference_engine.ipynb` validates all Phase 1 components across 7 sections:
+
+| Section | Purpose | Status |
+|---------|---------|--------|
+| 1 | Synthetic Diary Generation | PASS |
+| 2 | Case-Crossover Simulation | PASS |
+| 3 | Trigger Detection | PASS |
+| 4 | Recommendations (No Ranking) | PASS |
+| 5 | Recommendations (With Ranking) | PASS |
+| 6 | Dynamic Trigger Filtering | PASS |
+| 7 | Ground Truth Metrics | PASS |
+
+### 8.4 Validation Results
+
+With a 14-day synthetic diary (seed=42):
+- **41 meals** generated, **10 symptom episodes**
+- True triggers: `cheddar cheese`, `whole milk`
+- Negative control: `olive oil`
+
+**Case-crossover output:** `cheddar cheese` U=5, V=0; `whole milk` U=4, V=0
+
+**Trigger detection:**
+- Recall = 1.0 (both true triggers detected)
+- Negative control passed (olive oil NOT detected)
+- Precision = 0.118 (expected with small dataset — many ingredients have elevated U by chance)
+
+**Preference-aware recommendations:**
+- Without ranking: Similarity fallback works, all recommendations safe
+- With ranking: User preferences respected
+- Dynamic filtering: Triggers correctly filtered from rankings, backfilling works (3 from ranking + 2 backfilled when 2 triggers removed)
+
+### 8.5 Design Decisions
+
+**Exposure-driven causal model:** Symptoms are generated probabilistically based on trigger presence, not deterministically. This mirrors real-world variance where triggers don't cause symptoms 100% of the time.
+
+**No group expansion in trigger filtering:** The preference engine uses direct trigger detection output, not group-expanded triggers. This is intentional: group expansion is a statistical modelling assumption in the shrinkage model, not a recommendation filtering rule. Users might tolerate one cheese but not another.
+
+**Backfilling from similarity:** When user-ranked items are filtered as triggers, the engine backfills from embedding similarity. This ensures users always receive the requested number of recommendations while respecting their preferences where possible.
+
+**Placeholder explanations:** `RecommendationExplanation` returns placeholder text ("Coming in Phase 3"). Natural language explanation generation is deferred to a later phase.
+
+### 8.6 Files Created
+
+```
+backend/safeplate/
+├── diary_generator.py              [NEW, ~280 lines]
+├── case_crossover_simulator.py     [NEW, ~230 lines]
+├── user_preferences.py             [NEW, ~140 lines]
+└── preference_aware_recommendation.py [NEW, ~270 lines]
+
+data/
+├── test_diaries/                   [NEW, empty directory]
+└── test_results/
+    └── phase1_metrics.json         [NEW, validation metrics]
+
+notebooks/
+└── 08_test_preference_engine.ipynb [NEW, 7 sections]
+```
+
+### 8.7 Next Steps
+
+Phase 2 will add:
+- Flask web UI for interactive demonstration
+- Additional synthetic scenarios (multiple triggers, varying effect strengths)
+- Extended ground truth metrics (calibration curves, ROC analysis)
