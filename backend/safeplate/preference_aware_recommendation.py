@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .embedding_loader import EmbeddingLoader
-from .group_aware_trigger_detector import FullShrinkageOutput
+from .group_aware_trigger_detector import FullShrinkageOutput, ShrinkageResult
 from .ingredient_groups import IngredientGroupManager
 from .integrated_pipeline import SafePlatePipeline
 from .recommendation_engine import IngredientNotFoundError
@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 class RecommendationExplanation:
     """Explanation for why an ingredient was recommended.
 
-    This is a SKELETON implementation for Phase 1.
-    Full explanation generation will be added in Phase 3.
+    Provides multi-evidence explanations combining:
+    - Safety: From shrinkage model (OR, confidence, protected status)
+    - Similarity: From Node2Vec embeddings (cosine similarity)
+    - Preference: From user ranking history (rank position or backfill)
     """
 
     safety_reason: str
@@ -39,9 +41,24 @@ class RecommendationExplanation:
         """Generate human-readable explanation text.
 
         Returns:
-            Explanation text (placeholder in Phase 1).
+            Formatted explanation with Markdown bold headers and pipe separators.
         """
-        return "Explanation coming in Phase 3"
+        text = f"**Safety:** {self.safety_reason} | **Similarity:** {self.similarity_reason}"
+        if self.preference_reason is not None:
+            text += f" | **Preference:** {self.preference_reason}"
+        return text
+
+    def to_dict(self) -> dict:
+        """Convert explanation to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary with safety, similarity, and preference keys.
+        """
+        return {
+            "safety": self.safety_reason,
+            "similarity": self.similarity_reason,
+            "preference": self.preference_reason,
+        }
 
 
 @dataclass
@@ -117,6 +134,7 @@ class PreferenceAwareRecommendationEngine:
         query_ingredient: str,
         shrinkage_result: FullShrinkageOutput,
         top_n: int = 10,
+        include_explanations: bool = False,
     ) -> list[Recommendation]:
         """Get substitute recommendations with preference integration.
 
@@ -131,11 +149,14 @@ class PreferenceAwareRecommendationEngine:
            - Get similar ingredients via embeddings
            - Filter out triggers
            - Take top_n
+        5. Optionally generate explanations for each recommendation
 
         Args:
             query_ingredient: The ingredient to find substitutes for.
             shrinkage_result: Output from pipeline.detect_triggers_from_stats().
             top_n: Number of recommendations to return.
+            include_explanations: If True, generate explanations for each
+                recommendation. Default False for backward compatibility.
 
         Returns:
             List of Recommendation objects.
@@ -152,7 +173,7 @@ class PreferenceAwareRecommendationEngine:
 
         if user_ranking:
             # Step 3: Use user ranking with trigger filtering
-            return self._recommendations_from_ranking(
+            recommendations = self._recommendations_from_ranking(
                 query_ingredient=query_ingredient,
                 user_ranking=user_ranking.ranked_ingredients,
                 trigger_set=trigger_set,
@@ -160,11 +181,20 @@ class PreferenceAwareRecommendationEngine:
             )
         else:
             # Step 4: Use similarity-based recommendations
-            return self._recommendations_from_similarity(
+            recommendations = self._recommendations_from_similarity(
                 query_ingredient=query_ingredient,
                 trigger_set=trigger_set,
                 top_n=top_n,
             )
+
+        # Step 5: Generate explanations if requested
+        if include_explanations:
+            for rec in recommendations:
+                rec.explanation = self.generate_explanation(
+                    rec, query_ingredient, shrinkage_result
+                )
+
+        return recommendations
 
     def _recommendations_from_ranking(
         self,
@@ -356,6 +386,25 @@ class PreferenceAwareRecommendationEngine:
 
         return scores
 
+    def _find_ingredient_in_shrinkage_result(
+        self,
+        ingredient: str,
+        shrinkage_result: FullShrinkageOutput,
+    ) -> Optional[ShrinkageResult]:
+        """Find an ingredient's shrinkage result.
+
+        Args:
+            ingredient: The ingredient name to search for.
+            shrinkage_result: The full shrinkage output.
+
+        Returns:
+            The matching ShrinkageResult, or None if not found.
+        """
+        for result in shrinkage_result.ingredients:
+            if result.ingredient == ingredient:
+                return result
+        return None
+
     def generate_explanation(
         self,
         rec: Recommendation,
@@ -364,8 +413,10 @@ class PreferenceAwareRecommendationEngine:
     ) -> RecommendationExplanation:
         """Generate explanation for a recommendation.
 
-        PLACEHOLDER implementation for Phase 1.
-        Full explanation generation will be added in Phase 3.
+        Combines three sources of evidence:
+        - Safety: From shrinkage model (OR, confidence, protected status)
+        - Similarity: From Node2Vec embeddings
+        - Preference: From user ranking history
 
         Args:
             rec: The Recommendation to explain.
@@ -373,10 +424,68 @@ class PreferenceAwareRecommendationEngine:
             shrinkage_result: The shrinkage analysis result.
 
         Returns:
-            RecommendationExplanation (placeholder content).
+            RecommendationExplanation with all three components.
         """
+        # Step 1: Find ingredient in shrinkage result
+        ingredient_result = self._find_ingredient_in_shrinkage_result(
+            rec.ingredient, shrinkage_result
+        )
+
+        # Step 2: Generate safety reason
+        if ingredient_result is not None:
+            final_OR = ingredient_result.final_OR
+            confidence = ingredient_result.confidence
+            protected = ingredient_result.protected
+            U = ingredient_result.U
+            V = ingredient_result.V
+            evidence_source = ingredient_result.evidence_source
+        else:
+            # Default values for ingredients not in shrinkage result
+            final_OR = 1.0
+            confidence = "LOW"
+            protected = False
+            U = 0
+            V = 0
+            evidence_source = "unknown"
+
+        if protected:
+            # Protected safe: significant safety evidence
+            total_exposures = U + V
+            safety_reason = (
+                f"Protected safe (OR={final_OR:.2f}, "
+                f"{total_exposures} exposures with 0 symptoms)"
+            )
+        elif final_OR < 1.0:
+            # Not a trigger: OR below parity
+            safety_reason = f"Not a trigger (OR={final_OR:.2f}, {confidence} confidence)"
+        elif evidence_source == "own_trigger":
+            # Detected as trigger (shouldn't appear in recommendations, but handle)
+            safety_reason = (
+                f"Excluded: detected as trigger (OR={final_OR:.2f}, {confidence} confidence)"
+            )
+        else:
+            # Low trigger risk: OR >= 1.0 but not statistically significant
+            safety_reason = (
+                f"Low trigger risk (OR={final_OR:.2f}, {confidence} confidence, "
+                f"not statistically significant)"
+            )
+
+        # Step 3: Generate similarity reason
+        similarity_reason = (
+            f"Similar to {query} (similarity={rec.similarity_score:.2f}, "
+            f"based on recipe co-occurrence)"
+        )
+
+        # Step 4: Generate preference reason
+        if rec.user_rank is not None:
+            preference_reason = f"You ranked this #{rec.user_rank} for {query} substitution"
+        elif self._user_pref_store.has_ranking(query):
+            preference_reason = "Backfilled recommendation (not in your original ranking)"
+        else:
+            preference_reason = None
+
         return RecommendationExplanation(
-            safety_reason="Placeholder - Phase 3",
-            similarity_reason="Placeholder - Phase 3",
-            preference_reason="Placeholder - Phase 3" if rec.user_rank else None,
+            safety_reason=safety_reason,
+            similarity_reason=similarity_reason,
+            preference_reason=preference_reason,
         )
