@@ -81,6 +81,33 @@ def generate_diary():
         return jsonify({"status": "error", "message": str(e)}), 400
 
 
+@app.route("/get_diary_data")
+def get_diary_data():
+    meals = session.get("meals")
+    symptoms = session.get("symptoms")
+    diary_config = session.get("diary_config")
+
+    if not meals or not symptoms:
+        return jsonify({"status": "no_data"})
+
+    # Compute date range from first and last meal timestamps
+    timestamps = [m["timestamp"] for m in meals]
+    first_date = timestamps[0][:10]
+    last_date = timestamps[-1][:10]
+
+    return jsonify({
+        "status": "success",
+        "meals": meals,
+        "symptoms": symptoms,
+        "summary": {
+            "n_meals": len(meals),
+            "n_symptoms": len(symptoms),
+            "n_days": diary_config["n_days"],
+            "date_range": f"{first_date} to {last_date}",
+        },
+    })
+
+
 @app.route("/session/clear")
 def clear_session():
     session.clear()

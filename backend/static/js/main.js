@@ -12,6 +12,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             btn.classList.add("active");
             document.getElementById(btn.dataset.tab).classList.add("active");
+
+            if (btn.dataset.tab === "tab2") {
+                loadDiaryData();
+            }
         });
     });
 
@@ -164,4 +168,96 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Reset failed:", err);
         }
     });
+
+    // --- Diary Display ---
+    function formatTimestamp(isoString) {
+        const date = new Date(isoString);
+        return date.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+        });
+    }
+
+    async function loadDiaryData() {
+        try {
+            const res = await fetch("/get_diary_data");
+            const data = await res.json();
+
+            const emptyState = document.getElementById("diary-empty-state");
+            const summary = document.getElementById("diary-summary");
+            const timeline = document.getElementById("diary-timeline");
+
+            if (data.status === "no_data") {
+                emptyState.style.display = "";
+                summary.style.display = "none";
+                timeline.style.display = "none";
+                return;
+            }
+
+            emptyState.style.display = "none";
+            summary.style.display = "";
+            timeline.style.display = "";
+
+            document.getElementById("summary-date-range").textContent = data.summary.date_range;
+            document.getElementById("summary-meals").textContent = data.summary.n_meals;
+            document.getElementById("summary-symptoms").textContent = data.summary.n_symptoms;
+            document.getElementById("summary-days").textContent = data.summary.n_days;
+
+            renderMeals(data.meals);
+            renderSymptoms(data.symptoms);
+        } catch (err) {
+            console.error("Failed to load diary data:", err);
+        }
+    }
+
+    function renderMeals(meals) {
+        const list = document.getElementById("meals-list");
+        list.innerHTML = "";
+
+        meals.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+        meals.forEach((meal) => {
+            const tags = meal.ingredients
+                .map((ing) => `<span class="ingredient-tag">${ing}</span>`)
+                .join("");
+
+            const card = document.createElement("div");
+            card.className = "meal-card";
+            card.innerHTML = `
+                <div class="meal-timestamp">${formatTimestamp(meal.timestamp)}</div>
+                <div class="meal-id">Meal #${meal.meal_id}</div>
+                <div class="meal-ingredients">${tags}</div>
+            `;
+            list.appendChild(card);
+        });
+    }
+
+    function renderSymptoms(symptoms) {
+        const list = document.getElementById("symptoms-list");
+        list.innerHTML = "";
+
+        if (symptoms.length === 0) {
+            list.innerHTML = '<p class="empty-state" style="padding: 24px;">No symptoms recorded in this diary</p>';
+            return;
+        }
+
+        symptoms.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+        symptoms.forEach((symptom) => {
+            const card = document.createElement("div");
+            card.className = "symptom-card";
+            card.innerHTML = `
+                <div class="symptom-timestamp">${formatTimestamp(symptom.timestamp)}</div>
+                <div class="symptom-id">
+                    <span class="symptom-icon">&#9888;&#65039;</span>
+                    Symptom #${symptom.symptom_id}
+                </div>
+            `;
+            list.appendChild(card);
+        });
+    }
 });
