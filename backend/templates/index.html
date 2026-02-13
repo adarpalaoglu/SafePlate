@@ -79,6 +79,17 @@
                     </div>
                 </details>
 
+                <div class="config-section trigger-config">
+                    <h3>Trigger Configuration</h3>
+                    <div class="param-group">
+                        <label for="trigger-select">Ground Truth Trigger Ingredient:</label>
+                        <select id="trigger-select" class="trigger-dropdown">
+                            <option value="">Loading ingredients...</option>
+                        </select>
+                        <p class="help-text">This ingredient will have elevated probability of causing symptoms in the synthetic diary.</p>
+                    </div>
+                </div>
+
                 <button id="generate-btn" class="btn-primary">Generate Diary</button>
                 <div id="generation-status" class="status-message"></div>
             </div>
@@ -127,7 +138,60 @@
 
             <div id="tab3" class="tab-pane">
                 <h2>Run Detection</h2>
-                <p>View diary first, then run trigger detection.</p>
+
+                <div id="detection-empty-state" class="empty-state">
+                    <p>Click the button below to analyze your diary and detect potential trigger ingredients.</p>
+                    <button id="run-detection-btn" class="btn-primary" style="margin-top: 16px;">Run Shrinkage Analysis</button>
+                    <div id="detection-status" class="status-message"></div>
+                </div>
+
+                <div id="detection-results" style="display: none;">
+                    <div class="ground-truth-card">
+                        <h3>Ground Truth (Known Trigger)</h3>
+                        <p>The synthetic diary was generated with <strong id="ground-truth-trigger">-</strong> as the trigger ingredient.</p>
+                        <p class="help-text">This allows you to validate whether the detection algorithm correctly identifies the known trigger.</p>
+                    </div>
+
+                    <div class="summary-card">
+                        <h3>Detection Summary</h3>
+                        <div class="summary-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Triggers Detected</span>
+                                <span id="det-summary-triggers" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Ingredients Tested</span>
+                                <span id="det-summary-tested" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">High Confidence</span>
+                                <span id="det-summary-high-conf" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Protected Safe</span>
+                                <span id="det-summary-protected" class="stat-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="results-table-container">
+                        <h3>Ingredient Analysis Results</h3>
+                        <table class="detection-table">
+                            <thead>
+                                <tr>
+                                    <th>Ingredient</th>
+                                    <th>Odds Ratio</th>
+                                    <th>Confidence</th>
+                                    <th>U (Case)</th>
+                                    <th>V (Control)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detection-table-body"></tbody>
+                        </table>
+                    </div>
+
+                    <button id="rerun-detection-btn" class="btn-secondary" style="margin-top: 24px;">Re-run Analysis</button>
+                </div>
             </div>
 
             <div id="tab4" class="tab-pane">

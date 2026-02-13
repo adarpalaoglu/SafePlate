@@ -470,7 +470,8 @@ No scipy, pandas, or other heavy dependencies are required. All computation is c
 - **Integration pipeline:** February 4, 2026 (`integrated_pipeline.py` and notebook 06, validated end-to-end).
 - **Phase 1 Test Lab:** February 6, 2026 (4 new modules: diary generation, case-crossover simulation, user preferences, preference-aware recommendations; notebook 08 validation).
 - **Phase 3 Explainability:** February 11, 2026 (explanation generation with safety/similarity/preference components; Section 8 validation tests).
-- **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) + ~920 (Phase 1 Test Lab modules) + ~50 (Phase 3 explainability) = ~2,373 lines of production and test code.
+- **Phase 2 Web UI:** February 12, 2026 (Flask app scaffold, diary display, trigger detection integration, configurable trigger selection).
+- **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) + ~920 (Phase 1 Test Lab modules) + ~50 (Phase 3 explainability) + ~1,419 (Web UI) = ~3,792 lines of production and test code.
 
 ---
 
@@ -493,6 +494,14 @@ Cochran, W. G. (1954). The combination of estimates from different experiments. 
 ```
 SafePlate/
 ├── backend/
+│   ├── app.py                                 [NEW, 237 lines, Web UI]
+│   ├── templates/
+│   │   └── index.html                         [NEW, 211 lines, Web UI]
+│   ├── static/
+│   │   ├── css/
+│   │   │   └── style.css                      [NEW, 565 lines, Web UI]
+│   │   └── js/
+│   │       └── main.js                        [NEW, 406 lines, Web UI]
 │   └── safeplate/
 │       ├── group_aware_trigger_detector.py    [REWRITTEN, ~450 lines]
 │       ├── integrated_pipeline.py             [NEW, 233 lines]
@@ -572,7 +581,7 @@ Notebook 06 validates end-to-end: 25 tested → 426 total, 1 protected safe (tom
 - `test_shrinkage.py`: All 10 edge cases verified. Run with: `python tests/test_shrinkage.py`
 - `test_group_integration.py`: All 6 integration tests verified. Run with: `python tests/test_group_integration.py`
 
-**Next step:** Phase 2 of Test Lab (Flask web UI demonstration).
+**Next step:** Complete Tabs 4–5 of the Flask web UI (Test Recommendations and Set Preferences).
 
 ---
 
@@ -712,3 +721,177 @@ Phase 2 will add:
 - `backend/safeplate/preference_aware_recommendation.py` (~50 lines added)
 - `notebooks/08_test_preference_engine.ipynb` (Section 8 added, ~200 lines)
 - `docs/POST_PROGRESS_REPORT_TECHNICAL_LOG.md` (this section)
+
+---
+
+## 9. Phase 2: Flask Web UI (Test Lab Interface)
+
+**Status:** Completed (Tabs 1–3 fully functional, Tabs 4–5 placeholder)
+**Date:** February 2026
+**Purpose:** Web-based test lab interface for controlled evaluation of trigger detection and recommendation systems, enabling interactive parameter exploration and visual validation of pipeline outputs.
+
+### 9.1 Application Architecture
+
+**Files created:**
+- `backend/app.py` (237 lines) — Flask application with 7 routes
+- `backend/templates/index.html` (211 lines) — Single-page interface with 5-tab navigation
+- `backend/static/css/style.css` (565 lines) — Custom CSS with health-focused design system
+- `backend/static/js/main.js` (406 lines) — Vanilla JavaScript for all interactivity
+
+**Design decision: Single-page application with session storage.** The test lab is a sequential workflow (configure → generate → detect → recommend → set preferences) where each step depends on the previous. A single HTML page with tab navigation preserves this linearity while allowing users to revisit earlier steps. Flask session storage (signed cookies) was chosen over database persistence because the test lab is single-user and ephemeral — there is no need for multi-session history or concurrent access. This eliminates database setup complexity for dissertation evaluators.
+
+**Design decision: No external frameworks.** The interface uses vanilla JavaScript and custom CSS with no dependencies on Bootstrap, Tailwind, jQuery, or React. This keeps the deployment minimal (only Flask required) and ensures the code is fully auditable for the dissertation submission.
+
+**Routes implemented:**
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/` | GET | Render main page |
+| `/get_ingredient_pool` | GET | Return sorted ingredient list and default trigger |
+| `/generate_diary` | POST | Generate synthetic diary from configuration parameters |
+| `/get_diary_data` | GET | Return meals, symptoms, and summary from session |
+| `/run_detection` | POST | Run simplified case-crossover and shrinkage pipeline |
+| `/get_detection_results` | GET | Return shrinkage results with ground truth trigger |
+| `/session/clear` | GET | Clear all session data |
+
+**Pipeline components initialised at startup:** `EmbeddingLoader`, `IngredientGroupManager`, and `SafePlatePipeline` are instantiated once when the Flask app starts, avoiding repeated loading of the ~2700-ingredient embedding matrix and group CSV on each request.
+
+### 9.2 Tab 1: Configure Scenario
+
+Tab 1 provides slider-based configuration for all `DiaryGeneratorConfig` parameters, organised into two sections:
+
+**Key parameters** (always visible):
+- Days to generate (7–90, default 30)
+- Trigger effect strength (0–100%, default 50%)
+- Baseline symptom rate (0–20%, default 5%)
+- Trigger exposure rate (0–100%, default 30%)
+
+**Advanced parameters** (collapsible `<details>` section):
+- Meals per day mean (1–6, default 3.0)
+- Min/max ingredients per meal (2–8 / 3–15, defaults 3/8)
+- Hazard window hours (2–24, default 6)
+- Minimum lag hours (0–6, default 1)
+
+**Trigger ingredient selection:** A dropdown populated from `/get_ingredient_pool` allows the user to select any of the 25 pool ingredients as the ground truth trigger. Default is "cheddar cheese". The selected trigger is sent in the generation request and stored in session for later comparison against detection results.
+
+**Cross-field validation:** JavaScript enforces `ingredients_max >= ingredients_min` and `hazard_window > min_lag` by auto-adjusting the dependent slider when constraints are violated.
+
+Percentage sliders (trigger effect, baseline rate, trigger exposure) display values with "%" suffix and are converted to 0–1 decimals before being sent to the backend.
+
+### 9.3 Tab 2: View Diary
+
+Tab 2 displays the generated diary in a two-column timeline layout.
+
+**Summary card:** A 4-column grid showing date range, total meals, total symptoms, and number of days. Values use monospace font for numerical alignment.
+
+**Timeline layout:**
+- Left column: Meal cards (white background, subtle border) showing timestamp, meal ID, and ingredient tags as inline rounded pills with light sage background
+- Right column: Symptom cards (terracotta-tinted background `#FEF3E2`, terracotta border) showing timestamp and symptom ID with warning icon
+
+**Responsive design:** On viewports narrower than 768px, the summary grid collapses to 2 columns and the timeline switches to a single stacked column. This was implemented via CSS `@media` queries.
+
+**Date formatting:** ISO timestamps from session (e.g., `2026-01-01T08:30:00`) are parsed with `new Date()` and formatted to human-readable strings (e.g., "Jan 1, 2026 8:30 AM") using `toLocaleString()` with explicit `en-US` locale.
+
+**Edge case: zero symptoms.** If the generated diary contains no symptoms, the symptoms column displays "No symptoms recorded in this diary" instead of an empty container.
+
+### 9.4 Tab 3: Trigger Detection Integration
+
+Tab 3 integrates with the `SafePlatePipeline` to run shrinkage analysis and display results.
+
+**Simplified case-crossover placeholder:** The full case-crossover algorithm (notebook 04) involves window matching, discordant pair identification, and Bayesian posterior estimation. For the web UI MVP, a simplified placeholder was implemented that counts ingredient-symptom co-occurrences within the configured hazard window:
+
+```python
+for each ingredient:
+    meals_with_ingredient = [meals containing this ingredient]
+    for each such meal:
+        symptom_count += count of symptoms within [min_lag, hazard_window] hours
+    U = symptom_count
+    V = len(meals_with_ingredient) - symptom_count
+```
+
+This produces (U, V) counts suitable for the shrinkage pipeline input. The placeholder correctly identifies the ground truth trigger in testing (e.g., cheddar cheese at OR ≈ 1.95 with HIGH confidence given default parameters). The full case-crossover will replace this in a future refinement.
+
+**Pipeline integration:** The route calls `PIPELINE.detect_triggers_from_stats(ingredient_stats)` and `PIPELINE.get_pipeline_summary(shrinkage_result)`, reusing the validated pipeline from Section 7 without modification.
+
+**Session size optimisation:** The shrinkage pipeline returns results for all ~257 ingredients (25 tested + 232 untested group members). Storing all of these in the Flask session cookie would exceed the 4KB browser cookie limit. The route therefore stores only tested ingredients (`U + V > 0`) and protected-safe ingredients, reducing the stored set to ~25 entries.
+
+**Results display:**
+
+*Detection summary card:* 4-column grid showing triggers detected, ingredients tested, high-confidence count, and protected-safe count.
+
+*Results table:* Columns: Ingredient, Odds Ratio, Confidence, U (Case), V (Control). Sorted by OR descending, then by confidence (HIGH → MEDIUM → LOW). Protected-safe ingredients are excluded from the table (their safety is the model's assurance, not something requiring user review).
+
+*Visual encoding:*
+- Rows with OR ≥ 1.5 receive terracotta background highlighting (`trigger-row` class)
+- Confidence badges: HIGH = sage green background, MEDIUM = gray, LOW = light gray
+- OR values: terracotta colour for OR ≥ 1.5, slate for OR < 1.5
+- All numeric values use monospace font
+
+**Ground truth validation card:** A prominent terracotta-bordered card at the top of results displays the known trigger ingredient, enabling the user to immediately validate whether the detection algorithm correctly identified it. The ground truth row in the table is marked with a target emoji and a thick left border.
+
+**Re-run capability:** A "Re-run Analysis" button allows running detection again with the same diary data, useful after parameter changes in future phases.
+
+### 9.5 Tab Navigation and Workflow Control
+
+Tabs are enabled progressively to enforce the sequential workflow:
+- **Initial state:** Only Tab 1 active; Tabs 2–5 disabled (gray, `cursor: not-allowed`)
+- **After diary generation:** Tabs 2 and 3 enabled; auto-switch to Tab 2
+- **After detection:** Tab 4 enabled
+- **Reset All:** Clears session, disables Tabs 2–5, resets all sliders to defaults, resets trigger dropdown to default
+
+Tab switches trigger data loading: switching to Tab 2 calls `loadDiaryData()`, switching to Tab 3 calls `loadDetectionResults()`. This ensures displayed data is always current.
+
+### 9.6 Visual Design System
+
+The interface uses a minimal, health-focused design appropriate for a scientific evaluation tool:
+
+| Element | Value |
+|---------|-------|
+| Primary accent (sage green) | `#7C9885` |
+| Secondary accent (terracotta) | `#D4A574` |
+| Text colour | `#4A5568` (slate gray) |
+| Body font | `system-ui, -apple-system, "Segoe UI", sans-serif` |
+| Numeric/monospace font | `Consolas, Monaco, monospace` |
+| Card shadow | `0 1px 3px rgba(0,0,0,0.1)` |
+| Border radius | `8px` (cards), `6px` (inputs), `4px` (tags) |
+| Max container width | `1200px`, centered |
+| Primary buttons | Sage green background, white text |
+| Secondary buttons | Terracotta background, white text |
+
+Sage green was chosen as the primary colour for its association with health and natural ingredients. Terracotta is used as a warning/attention colour for symptoms, trigger indicators, and the ground truth card, providing clear visual distinction without the aggressive connotation of red.
+
+### 9.7 Files Created
+
+```
+backend/
+├── app.py                     [NEW, 237 lines]
+├── templates/
+│   └── index.html             [NEW, 211 lines]
+└── static/
+    ├── css/
+    │   └── style.css          [NEW, 565 lines]
+    └── js/
+        └── main.js            [NEW, 406 lines]
+```
+
+Total: ~1,419 lines of application code (Python + HTML + CSS + JavaScript).
+
+### 9.8 Validation
+
+The web UI was validated through automated testing of all routes:
+
+- `GET /` returns 200 with all expected HTML elements
+- `GET /get_ingredient_pool` returns 25 sorted ingredients with default trigger
+- `POST /generate_diary` with default parameters produces ~100 meals and ~23 symptoms
+- `GET /get_diary_data` returns meals, symptoms, and correct summary statistics
+- `POST /run_detection` correctly identifies the configured trigger (cheddar cheese: OR ≈ 1.95, HIGH confidence)
+- `GET /get_detection_results` returns results with ground truth trigger
+- `GET /session/clear` clears all session data; subsequent data requests return `no_data`
+- Changing the trigger ingredient (e.g., to "milk") and regenerating correctly shifts detection to the new trigger
+
+### 9.9 Limitations and Future Work
+
+- **Tabs 4–5 are placeholders.** Tab 4 (Test Recommendations) and Tab 5 (Set Preferences) contain placeholder text only. These will be implemented in a future phase.
+- **Simplified case-crossover.** The co-occurrence counting is a placeholder for the full case-crossover algorithm. It produces reasonable results for single-trigger scenarios but does not implement discordant pair matching or Bayesian posterior estimation.
+- **Session cookie size.** Flask's default cookie-based sessions have a 4KB limit. The session size optimisation (storing only tested ingredients) keeps the current implementation within limits, but adding more data in future phases may require switching to server-side session storage (e.g., `flask-session` with filesystem backend).
+- **Fixed seed.** The diary generator uses `seed=42` for reproducibility. A future enhancement could expose the seed as a configurable parameter for exploring stochastic variation.

@@ -1,4 +1,29 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // --- Load ingredient pool ---
+    const triggerSelect = document.getElementById("trigger-select");
+
+    async function loadIngredientPool() {
+        try {
+            const res = await fetch("/get_ingredient_pool");
+            const data = await res.json();
+            if (data.status === "success") {
+                triggerSelect.innerHTML = "";
+                data.ingredients.forEach((ing) => {
+                    const opt = document.createElement("option");
+                    opt.value = ing;
+                    opt.textContent = ing;
+                    if (ing === data.default_trigger) opt.selected = true;
+                    triggerSelect.appendChild(opt);
+                });
+            }
+        } catch (err) {
+            console.error("Failed to load ingredient pool:", err);
+            triggerSelect.innerHTML = '<option value="">Error loading ingredients</option>';
+        }
+    }
+
+    loadIngredientPool();
+
     // --- Tab switching ---
     const tabButtons = document.querySelectorAll(".tab-btn");
     const tabPanes = document.querySelectorAll(".tab-pane");
@@ -15,6 +40,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (btn.dataset.tab === "tab2") {
                 loadDiaryData();
+            }
+            if (btn.dataset.tab === "tab3") {
+                loadDetectionResults();
             }
         });
     });
@@ -80,6 +108,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const statusEl = document.getElementById("generation-status");
 
     generateBtn.addEventListener("click", async () => {
+        const selectedTrigger = triggerSelect.value;
+        if (!selectedTrigger) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "Please select a trigger ingredient before generating the diary.";
+            return;
+        }
+
         generateBtn.disabled = true;
         statusEl.className = "status-message";
         statusEl.textContent = "Generating...";
@@ -94,6 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ingredients_per_meal_max: parseInt(sliders.ingredients_max.el.value),
             hazard_window_hours: parseInt(sliders.hazard_window.el.value),
             min_lag_hours: parseInt(sliders.min_lag.el.value),
+            selected_trigger: selectedTrigger,
         };
 
         try {
@@ -109,9 +145,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 statusEl.className = "status-message success";
                 statusEl.textContent = `Generated ${data.n_meals} meals and ${data.n_symptoms} symptoms`;
 
-                // Enable Tab 2
+                // Enable Tab 2 and Tab 3
                 const tab2Btn = document.querySelector('[data-tab="tab2"]');
+                const tab3Btn = document.querySelector('[data-tab="tab3"]');
                 tab2Btn.disabled = false;
+                tab3Btn.disabled = false;
 
                 // Auto-switch to Tab 2
                 tab2Btn.click();
@@ -160,6 +198,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 sliders[key].el.value = val;
                 sliders[key].display.textContent = val + sliders[key].suffix;
             });
+
+            // Reset trigger dropdown
+            loadIngredientPool();
 
             // Clear status
             statusEl.className = "status-message";
@@ -233,6 +274,108 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="meal-ingredients">${tags}</div>
             `;
             list.appendChild(card);
+        });
+    }
+
+    // --- Detection ---
+    const runDetectionBtn = document.getElementById("run-detection-btn");
+    const rerunDetectionBtn = document.getElementById("rerun-detection-btn");
+    const detectionStatusEl = document.getElementById("detection-status");
+
+    async function runDetection() {
+        runDetectionBtn.disabled = true;
+        runDetectionBtn.textContent = "Running analysis...";
+        detectionStatusEl.className = "status-message";
+        detectionStatusEl.textContent = "";
+
+        try {
+            const res = await fetch("/run_detection", { method: "POST" });
+            const data = await res.json();
+
+            if (data.status === "success") {
+                document.getElementById("detection-empty-state").style.display = "none";
+                document.getElementById("detection-results").style.display = "";
+                loadDetectionResults();
+
+                // Enable Tab 4
+                const tab4Btn = document.querySelector('[data-tab="tab4"]');
+                tab4Btn.disabled = false;
+            } else {
+                detectionStatusEl.className = "status-message error";
+                detectionStatusEl.textContent = "Error: " + (data.message || "Detection failed");
+            }
+        } catch (err) {
+            detectionStatusEl.className = "status-message error";
+            detectionStatusEl.textContent = "Error: " + err.message;
+        } finally {
+            runDetectionBtn.disabled = false;
+            runDetectionBtn.textContent = "Run Shrinkage Analysis";
+        }
+    }
+
+    runDetectionBtn.addEventListener("click", runDetection);
+    rerunDetectionBtn.addEventListener("click", runDetection);
+
+    async function loadDetectionResults() {
+        try {
+            const res = await fetch("/get_detection_results");
+            const data = await res.json();
+
+            if (data.status === "no_data") {
+                document.getElementById("detection-empty-state").style.display = "";
+                document.getElementById("detection-results").style.display = "none";
+                return;
+            }
+
+            document.getElementById("detection-empty-state").style.display = "none";
+            document.getElementById("detection-results").style.display = "";
+
+            const s = data.summary;
+            document.getElementById("det-summary-triggers").textContent = s.n_triggers;
+            document.getElementById("det-summary-tested").textContent = s.n_tested;
+            document.getElementById("det-summary-high-conf").textContent = s.n_high_confidence;
+            document.getElementById("det-summary-protected").textContent = s.n_protected_safe;
+
+            document.getElementById("ground-truth-trigger").textContent = data.ground_truth_trigger || "Unknown";
+
+            renderDetectionTable(data.ingredients, data.ground_truth_trigger);
+        } catch (err) {
+            console.error("Failed to load detection results:", err);
+        }
+    }
+
+    function renderDetectionTable(ingredients, groundTruthTrigger) {
+        const tbody = document.getElementById("detection-table-body");
+        tbody.innerHTML = "";
+
+        const confOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+        const visible = ingredients.filter((i) => !i.protected);
+        visible.sort((a, b) => {
+            if (b.final_OR !== a.final_OR) return b.final_OR - a.final_OR;
+            return (confOrder[a.confidence] || 3) - (confOrder[b.confidence] || 3);
+        });
+
+        visible.forEach((ing) => {
+            const row = document.createElement("tr");
+            const classes = [];
+            if (ing.final_OR >= 1.5) classes.push("trigger-row");
+            if (ing.ingredient === groundTruthTrigger) classes.push("ground-truth-row");
+            row.className = classes.join(" ");
+
+            const orClass = ing.final_OR >= 1.5 ? "or-high" : "or-neutral";
+            const confClass = ing.confidence === "HIGH" ? "confidence-high"
+                : ing.confidence === "MEDIUM" ? "confidence-medium" : "confidence-low";
+
+            const namePrefix = ing.ingredient === groundTruthTrigger ? "&#127919; " : "";
+
+            row.innerHTML = `
+                <td>${namePrefix}${ing.ingredient}</td>
+                <td><span class="or-value ${orClass}">${ing.final_OR.toFixed(2)}</span></td>
+                <td><span class="confidence-badge ${confClass}">${ing.confidence}</span></td>
+                <td>${ing.U}</td>
+                <td>${ing.V}</td>
+            `;
+            tbody.appendChild(row);
         });
     }
 

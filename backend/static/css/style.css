@@ -398,6 +398,161 @@ input[type="range"]::-moz-range-thumb {
     vertical-align: middle;
 }
 
+/* === Results Table === */
+.results-table-container {
+    margin-top: 24px;
+}
+
+.results-table-container h3 {
+    margin-bottom: 16px;
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.detection-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+}
+
+.detection-table thead {
+    background: #F0F4F1;
+}
+
+.detection-table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.detection-table td {
+    padding: 12px 16px;
+    border-top: 1px solid var(--light-gray);
+    color: var(--text);
+    font-size: 14px;
+}
+
+.detection-table tbody tr:hover {
+    background: #F9FAFB;
+}
+
+.trigger-row {
+    background: #FEF3E2;
+}
+
+.trigger-row:hover {
+    background: #FDE8CC !important;
+}
+
+.confidence-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.confidence-high {
+    background: var(--sage);
+    color: #fff;
+}
+
+.confidence-medium {
+    background: var(--light-gray);
+    color: var(--text);
+}
+
+.confidence-low {
+    background: #F3F4F6;
+    color: #9CA3AF;
+}
+
+.or-value {
+    font-family: Consolas, Monaco, monospace;
+    font-weight: 600;
+}
+
+.or-high {
+    color: var(--terracotta);
+}
+
+.or-neutral {
+    color: var(--text);
+}
+
+/* === Trigger Configuration === */
+.trigger-config {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--light-gray);
+}
+
+.trigger-dropdown {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--bg);
+    cursor: pointer;
+}
+
+.trigger-dropdown:focus {
+    outline: none;
+    border-color: var(--sage);
+    box-shadow: 0 0 0 3px rgba(124, 152, 133, 0.1);
+}
+
+.help-text {
+    font-size: 13px;
+    color: #9CA3AF;
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+/* === Ground Truth Card === */
+.ground-truth-card {
+    background: #FEF3E2;
+    border: 2px solid var(--terracotta);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.ground-truth-card h3 {
+    margin-bottom: 12px;
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.ground-truth-card p {
+    margin-bottom: 8px;
+    color: #6B7280;
+}
+
+.ground-truth-card strong {
+    color: var(--terracotta-dark);
+    font-weight: 700;
+    font-size: 16px;
+}
+
+/* === Ground Truth Row === */
+.ground-truth-row {
+    border-left: 4px solid var(--terracotta);
+}
+
+.ground-truth-row td:first-child {
+    font-weight: 700;
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .summary-stats {
