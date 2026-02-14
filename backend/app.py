@@ -8,6 +8,7 @@ from safeplate.diary_generator import DiaryGenerator, DiaryGeneratorConfig
 from safeplate.integrated_pipeline import SafePlatePipeline, PipelineConfig
 from safeplate.embedding_loader import EmbeddingLoader
 from safeplate.ingredient_groups import IngredientGroupManager
+from safeplate.recommendation_engine import RecommendationEngine
 
 app = Flask(__name__)
 app.secret_key = "safeplate-test-lab-secret-key-cs310"
@@ -39,6 +40,7 @@ PIPELINE = SafePlatePipeline(
     group_manager=GROUP_MANAGER,
     config=PIPELINE_CONFIG,
 )
+RECOMMENDATION_ENGINE = RecommendationEngine(embedding_loader=EMBEDDING_LOADER)
 
 
 @app.route("/")
@@ -198,6 +200,59 @@ def get_detection_results():
         "summary": result["summary"],
         "ground_truth_trigger": session.get("selected_trigger", "Unknown"),
     })
+
+
+@app.route("/get_diary_ingredients")
+def get_diary_ingredients():
+    if "meals" not in session:
+        return jsonify({"status": "no_data"})
+    unique = set()
+    for meal in session["meals"]:
+        unique.update(meal["ingredients"])
+    return jsonify({"status": "success", "ingredients": sorted(unique)})
+
+
+@app.route("/get_recommendations", methods=["POST"])
+def get_recommendations():
+    result = session.get("shrinkage_result")
+    if not result:
+        return jsonify({"status": "error", "message": "No trigger detection results found. Run detection first."}), 400
+
+    data = request.get_json()
+    query = data.get("query_ingredient", "").strip()
+    if not query:
+        return jsonify({"status": "error", "message": "No ingredient specified."}), 400
+
+    try:
+        trigger_list = result["summary"].get("trigger_list", [])
+        recommendations = RECOMMENDATION_ENGINE.find_substitutes(
+            ingredient=query,
+            triggers=trigger_list,
+            top_n=PIPELINE_CONFIG.recommendation_top_n,
+        )
+        # Check group membership for each recommendation
+        enhanced = []
+        for name, score in recommendations:
+            rec = {"ingredient": name, "similarity": float(score), "is_same_group": False, "same_group_as_trigger": None}
+            rec_group = GROUP_MANAGER.get_group(name)
+            if rec_group:
+                for trigger in trigger_list:
+                    trigger_group = GROUP_MANAGER.get_group(trigger)
+                    if trigger_group and rec_group == trigger_group:
+                        rec["is_same_group"] = True
+                        rec["same_group_as_trigger"] = trigger
+                        break
+            enhanced.append(rec)
+
+        return jsonify({
+            "status": "success",
+            "query_ingredient": query,
+            "recommendations": enhanced,
+            "excluded_triggers": trigger_list,
+            "n_recommendations": len(recommendations),
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/get_diary_data")

@@ -44,6 +44,9 @@ document.addEventListener("DOMContentLoaded", () => {
             if (btn.dataset.tab === "tab3") {
                 loadDetectionResults();
             }
+            if (btn.dataset.tab === "tab4") {
+                loadRecommendationInterface();
+            }
         });
     });
 
@@ -378,6 +381,206 @@ document.addEventListener("DOMContentLoaded", () => {
             tbody.appendChild(row);
         });
     }
+
+    // --- Recommendations ---
+    const getSubstitutesBtn = document.getElementById("get-substitutes-btn");
+    const ingredientSearchDropdown = document.getElementById("ingredient-search-dropdown");
+
+    async function loadRecommendationInterface() {
+        try {
+            const res = await fetch("/get_detection_results");
+            const data = await res.json();
+
+            if (data.status !== "success") {
+                document.getElementById("recommendations-empty-state").style.display = "";
+                document.getElementById("recommendations-interface").style.display = "none";
+                return;
+            }
+
+            document.getElementById("recommendations-empty-state").style.display = "none";
+            document.getElementById("recommendations-interface").style.display = "";
+
+            renderTriggerPills(data.summary.trigger_list);
+            await loadIngredientDropdown();
+        } catch (err) {
+            console.error("Failed to load recommendation interface:", err);
+        }
+    }
+
+    function renderTriggerPills(triggers) {
+        const container = document.getElementById("trigger-pills-container");
+        container.innerHTML = "";
+
+        if (!triggers || triggers.length === 0) {
+            container.innerHTML = '<p class="help-text">No triggers detected in this diary.</p>';
+            return;
+        }
+
+        triggers.forEach((trigger) => {
+            const pill = document.createElement("div");
+            pill.className = "trigger-pill";
+            pill.textContent = trigger;
+            pill.addEventListener("click", () => getRecommendationsFor(trigger));
+            container.appendChild(pill);
+        });
+    }
+
+    async function loadIngredientDropdown() {
+        try {
+            const res = await fetch("/get_diary_ingredients");
+            const data = await res.json();
+
+            if (data.status === "success") {
+                ingredientSearchDropdown.innerHTML = '<option value="">Select an ingredient...</option>';
+                data.ingredients.forEach((ing) => {
+                    const opt = document.createElement("option");
+                    opt.value = ing;
+                    opt.textContent = ing;
+                    ingredientSearchDropdown.appendChild(opt);
+                });
+            }
+        } catch (err) {
+            console.error("Failed to load ingredients:", err);
+        }
+    }
+
+    async function getRecommendationsFor(ingredient) {
+        const resultsEl = document.getElementById("recommendations-results");
+        const listEl = document.getElementById("recommendations-list");
+
+        resultsEl.style.display = "";
+        document.getElementById("query-ingredient-display").textContent = ingredient;
+        listEl.innerHTML = "<p>Loading recommendations...</p>";
+
+        try {
+            const res = await fetch("/get_recommendations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query_ingredient: ingredient }),
+            });
+
+            const data = await res.json();
+
+            if (data.status === "success") {
+                renderRecommendations(data.recommendations);
+                renderExcludedList(data.excluded_triggers);
+            } else {
+                listEl.innerHTML = `<p class="error-text">${data.message}</p>`;
+            }
+        } catch (err) {
+            console.error("Failed to get recommendations:", err);
+            listEl.innerHTML = '<p class="error-text">Failed to load recommendations.</p>';
+        }
+    }
+
+    function renderRecommendations(recommendations) {
+        const container = document.getElementById("recommendations-list");
+        container.innerHTML = "";
+
+        if (!recommendations || recommendations.length === 0) {
+            container.innerHTML = '<p class="help-text">No substitutes available for this ingredient.</p>';
+            return;
+        }
+
+        recommendations.forEach((rec, index) => {
+            const card = document.createElement("div");
+            card.className = "recommendation-card";
+            if (rec.is_same_group) card.setAttribute("data-same-group", "true");
+
+            let html = `
+                <div class="recommendation-header">
+                    <span class="recommendation-name">${index + 1}. ${rec.ingredient}</span>
+                    <span class="recommendation-score">${rec.similarity.toFixed(3)}</span>
+                </div>
+            `;
+
+            if (rec.is_same_group && rec.same_group_as_trigger) {
+                html += `
+                    <div class="same-group-warning">
+                        Same group as trigger: <strong>${rec.same_group_as_trigger}</strong>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = html;
+            container.appendChild(card);
+        });
+
+        resetFilterToggle();
+    }
+
+    function resetFilterToggle() {
+        const toggleBtn = document.getElementById("toggle-same-group-btn");
+        const hiddenCountDisplay = document.getElementById("hidden-count-display");
+        toggleBtn.textContent = "Hide Same-Group Items";
+        toggleBtn.classList.remove("active");
+        hiddenCountDisplay.style.display = "none";
+        document.querySelectorAll(".recommendation-card").forEach((card) => {
+            card.classList.remove("hidden-by-filter");
+        });
+        const msg = document.querySelector(".empty-filter-message");
+        if (msg) msg.remove();
+    }
+
+    function toggleSameGroupFilter() {
+        const toggleBtn = document.getElementById("toggle-same-group-btn");
+        const hiddenCountDisplay = document.getElementById("hidden-count-display");
+        const sameGroupCards = document.querySelectorAll('.recommendation-card[data-same-group="true"]');
+        const isHiding = toggleBtn.classList.contains("active");
+
+        if (isHiding) {
+            toggleBtn.textContent = "Hide Same-Group Items";
+            toggleBtn.classList.remove("active");
+            hiddenCountDisplay.style.display = "none";
+            sameGroupCards.forEach((c) => c.classList.remove("hidden-by-filter"));
+            const msg = document.querySelector(".empty-filter-message");
+            if (msg) msg.remove();
+        } else {
+            toggleBtn.textContent = "Show All";
+            toggleBtn.classList.add("active");
+            sameGroupCards.forEach((c) => c.classList.add("hidden-by-filter"));
+            const count = sameGroupCards.length;
+            if (count > 0) {
+                hiddenCountDisplay.textContent = `Hidden: ${count} same-group item${count > 1 ? "s" : ""}`;
+                hiddenCountDisplay.style.display = "inline";
+            }
+            const allCards = document.querySelectorAll(".recommendation-card");
+            if (allCards.length === count && count > 0) {
+                const p = document.createElement("p");
+                p.className = "help-text empty-filter-message";
+                p.textContent = 'All recommendations are from the same group as triggers. Try "Show All" or query a different ingredient.';
+                document.getElementById("recommendations-list").appendChild(p);
+            }
+        }
+    }
+
+    document.getElementById("toggle-same-group-btn").addEventListener("click", toggleSameGroupFilter);
+
+    function renderExcludedList(triggers) {
+        const container = document.getElementById("excluded-list");
+        container.innerHTML = "";
+
+        if (!triggers || triggers.length === 0) {
+            container.innerHTML = '<p class="help-text">No triggers excluded (none detected).</p>';
+            return;
+        }
+
+        triggers.forEach((trigger) => {
+            const item = document.createElement("div");
+            item.className = "excluded-item";
+            item.innerHTML = `<span>${trigger}</span>`;
+            container.appendChild(item);
+        });
+    }
+
+    getSubstitutesBtn.addEventListener("click", () => {
+        const ingredient = ingredientSearchDropdown.value;
+        if (!ingredient) {
+            alert("Please select an ingredient first.");
+            return;
+        }
+        getRecommendationsFor(ingredient);
+    });
 
     function renderSymptoms(symptoms) {
         const list = document.getElementById("symptoms-list");

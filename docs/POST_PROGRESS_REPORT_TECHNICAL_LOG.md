@@ -470,7 +470,7 @@ No scipy, pandas, or other heavy dependencies are required. All computation is c
 - **Integration pipeline:** February 4, 2026 (`integrated_pipeline.py` and notebook 06, validated end-to-end).
 - **Phase 1 Test Lab:** February 6, 2026 (4 new modules: diary generation, case-crossover simulation, user preferences, preference-aware recommendations; notebook 08 validation).
 - **Phase 3 Explainability:** February 11, 2026 (explanation generation with safety/similarity/preference components; Section 8 validation tests).
-- **Phase 2 Web UI:** February 12, 2026 (Flask app scaffold, diary display, trigger detection integration, configurable trigger selection).
+- **Phase 2 Web UI:** February 12, 2026 (Flask app scaffold, diary display, trigger detection integration, configurable trigger selection, recommendation interface with group-aware warnings).
 - **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) + ~920 (Phase 1 Test Lab modules) + ~50 (Phase 3 explainability) + ~1,419 (Web UI) = ~3,792 lines of production and test code.
 
 ---
@@ -886,12 +886,60 @@ The web UI was validated through automated testing of all routes:
 - `GET /get_diary_data` returns meals, symptoms, and correct summary statistics
 - `POST /run_detection` correctly identifies the configured trigger (cheddar cheese: OR ≈ 1.95, HIGH confidence)
 - `GET /get_detection_results` returns results with ground truth trigger
+- `GET /get_diary_ingredients` returns sorted unique ingredients from generated diary
+- `POST /get_recommendations` returns embedding-based substitutes with trigger exclusion and group-aware warnings
 - `GET /session/clear` clears all session data; subsequent data requests return `no_data`
 - Changing the trigger ingredient (e.g., to "milk") and regenerating correctly shifts detection to the new trigger
 
-### 9.9 Limitations and Future Work
+### 9.9 Tab 4: Test Recommendations
 
-- **Tabs 4–5 are placeholders.** Tab 4 (Test Recommendations) and Tab 5 (Set Preferences) contain placeholder text only. These will be implemented in a future phase.
+Tab 4 provides an interactive interface for exploring embedding-based ingredient substitutions, integrated with the detected triggers from Tab 3.
+
+**Trigger shortcut pills:** After detection, all detected triggers are displayed as clickable pills at the top of the tab. Clicking a pill immediately queries substitutes for that ingredient, providing a fast path to the most relevant recommendations.
+
+**Ingredient search:** A dropdown populated with all diary ingredients (`/get_diary_ingredients` route) allows searching for substitutes for any ingredient, not just detected triggers. This supports exploratory use cases where the user wants to understand the embedding space.
+
+**Backend route (`/get_recommendations`):** The route accepts a `query_ingredient` and calls `RECOMMENDATION_ENGINE.find_substitutes()` with the detected trigger list as exclusions. This ensures no detected trigger appears in the recommendation list. The engine uses Node2Vec embeddings to find the most semantically similar ingredients.
+
+**Recommendation cards:** Each substitute is displayed as a card showing the ingredient name and a similarity score bar (0–1 scale). The bar width and colour intensity encode similarity strength, providing at-a-glance comparison.
+
+**Excluded triggers panel:** A right-hand column lists all detected triggers that were excluded from recommendations, with their confidence badges. This makes the exclusion logic transparent to the user.
+
+### 9.10 Group-Aware Recommendation Warnings
+
+**Problem:** The `RecommendationEngine` excludes detected triggers from recommendations, but semantically similar ingredients in the same food group (e.g., mozzarella when cheddar cheese is a trigger) may still appear as top substitutes. These could be problematic for users with group-level sensitivities (e.g., dairy intolerance).
+
+**Solution:** A two-layer approach combining backend group checking with a client-side toggle filter.
+
+**Backend changes:** The `/get_recommendations` route was enhanced to check each recommendation against the `IngredientGroupManager`. For each recommended ingredient, the route calls `GROUP_MANAGER.get_group(name)` and compares it against the group of each detected trigger. Two fields are added to each recommendation object:
+
+- `is_same_group` (boolean): whether the recommendation belongs to the same food group as any detected trigger
+- `same_group_as_trigger` (string or null): the specific trigger ingredient sharing the group
+
+This approach leverages the existing `IngredientGroupManager` without modifying the recommendation engine itself, keeping the backend modules untouched.
+
+**Frontend display:** Recommendation cards with `is_same_group: true` display a terracotta-bordered warning badge reading "Same group as trigger: **[trigger name]**". The warning uses the terracotta colour palette consistent with other trigger indicators in the UI.
+
+**Toggle filter:** A filter bar above the recommendations provides a "Hide Same-Group Items" button. When activated:
+
+1. All same-group recommendation cards receive `display: none` via the `hidden-by-filter` CSS class
+2. The button text changes to "Show Same-Group Items" and receives the `active` class (terracotta background)
+3. A count badge appears showing how many items are hidden (e.g., "3 items hidden")
+4. If hiding same-group items leaves zero visible recommendations, an empty-state message is displayed
+
+The filter state resets whenever new recommendations are loaded, ensuring a clean state for each query.
+
+**Design rationale:** The toggle approach (warn but allow, rather than auto-exclude) was chosen because group-level sensitivity is not guaranteed—a user allergic to cheddar cheese may tolerate goat cheese despite both being in the dairy group. The warning provides information; the toggle provides control. This aligns with the SafePlate philosophy of empowering user decision-making rather than prescribing dietary restrictions.
+
+**Edge cases handled:**
+- Ingredients not found in any group: `get_group()` returns `None`, so `is_same_group` defaults to `False`
+- Multiple triggers in the same group: the warning references the first matching trigger found
+- No same-group items in results: the toggle button still appears but has no effect; no count badge is shown
+
+### 9.11 Limitations and Future Work
+
+- **Tab 5 is a placeholder.** Tab 5 (Set Preferences) contains placeholder text only. This will be implemented in a future phase to allow users to specify dietary preferences (e.g., vegetarian, vegan) that further filter recommendations.
 - **Simplified case-crossover.** The co-occurrence counting is a placeholder for the full case-crossover algorithm. It produces reasonable results for single-trigger scenarios but does not implement discordant pair matching or Bayesian posterior estimation.
 - **Session cookie size.** Flask's default cookie-based sessions have a 4KB limit. The session size optimisation (storing only tested ingredients) keeps the current implementation within limits, but adding more data in future phases may require switching to server-side session storage (e.g., `flask-session` with filesystem backend).
 - **Fixed seed.** The diary generator uses `seed=42` for reproducibility. A future enhancement could expose the seed as a configurable parameter for exploring stochastic variation.
+- **Single-trigger group matching.** The group-aware warning currently references only the first matching trigger when multiple triggers share a group. A future enhancement could list all matching triggers in the warning.

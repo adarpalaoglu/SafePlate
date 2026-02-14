@@ -196,7 +196,51 @@
 
             <div id="tab4" class="tab-pane">
                 <h2>Test Recommendations</h2>
-                <p>Run detection first to test recommendations.</p>
+
+                <div id="recommendations-empty-state" class="empty-state">
+                    <p>Run trigger detection first to test recommendations.</p>
+                </div>
+
+                <div id="recommendations-interface" style="display: none;">
+                    <div class="trigger-shortcuts-section">
+                        <h3>Detected Triggers <span class="help-text">(Click to get substitutes)</span></h3>
+                        <div id="trigger-pills-container" class="trigger-pills"></div>
+                    </div>
+
+                    <div class="search-section">
+                        <h3>Or search any ingredient:</h3>
+                        <div class="search-controls">
+                            <select id="ingredient-search-dropdown" class="ingredient-dropdown">
+                                <option value="">Select an ingredient...</option>
+                            </select>
+                            <button id="get-substitutes-btn" class="btn-primary">Get Substitutes</button>
+                        </div>
+                    </div>
+
+                    <div id="recommendations-results" style="display: none;">
+                        <div class="query-header">
+                            <h3>Substitutes for "<span id="query-ingredient-display">-</span>"</h3>
+                        </div>
+
+                        <div class="filter-toggle">
+                            <span class="filter-label">Filtering:</span>
+                            <button id="toggle-same-group-btn" class="toggle-btn">Hide Same-Group Items</button>
+                            <span id="hidden-count-display" class="hidden-count" style="display: none;"></span>
+                        </div>
+
+                        <div class="recommendations-layout">
+                            <div class="recommendations-column">
+                                <h4>Safe Substitutes</h4>
+                                <div id="recommendations-list" class="recommendations-list"></div>
+                            </div>
+                            <div class="excluded-column">
+                                <h4>Excluded Ingredients</h4>
+                                <p class="help-text">These detected triggers are filtered out from recommendations:</p>
+                                <div id="excluded-list" class="excluded-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div id="tab5" class="tab-pane">
