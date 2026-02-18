@@ -470,7 +470,7 @@ No scipy, pandas, or other heavy dependencies are required. All computation is c
 - **Integration pipeline:** February 4, 2026 (`integrated_pipeline.py` and notebook 06, validated end-to-end).
 - **Phase 1 Test Lab:** February 6, 2026 (4 new modules: diary generation, case-crossover simulation, user preferences, preference-aware recommendations; notebook 08 validation).
 - **Phase 3 Explainability:** February 11, 2026 (explanation generation with safety/similarity/preference components; Section 8 validation tests).
-- **Phase 2 Web UI:** February 12, 2026 (Flask app scaffold, diary display, trigger detection integration, configurable trigger selection, recommendation interface with group-aware warnings and multi-evidence explanations).
+- **Phase 2 Web UI:** February 12, 2026 (Flask app scaffold, diary display, trigger detection integration, configurable trigger selection, recommendation interface with group-aware warnings, multi-evidence explanations, and user preference ranking).
 - **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) + ~920 (Phase 1 Test Lab modules) + ~50 (Phase 3 explainability) + ~1,419 (Web UI) = ~3,792 lines of production and test code.
 
 ---
@@ -996,12 +996,47 @@ The filter state resets whenever new recommendations are loaded, ensuring a clea
 **Explanation format (4 components when same-group):**
 `**Safety:** ... | **Similarity:** ... | **Group:** Same group as trigger 'X' (may share chemical/biological properties) | **Preference:** ...`
 
-### 9.13 Limitations and Future Work
+### 9.13 User Preference Ranking (Tab 5)
 
-- **Tab 5 is a placeholder.** Tab 5 (Set Preferences) contains placeholder text only. This will be implemented in a future phase to allow users to specify dietary preferences (e.g., vegetarian, vegan) that further filter recommendations.
+**Purpose:** Allow users to manually rank preferred ingredient substitutes, integrating with the `PreferenceAwareRecommendationEngine` from Phase 1 to produce personalised recommendation orderings.
+
+**Integration with existing backend:**
+- Uses `UserPreferenceStore` (Phase 1) for persistence via `save_ranking()`, `get_ranking()`, `delete_ranking()`
+- Uses `PreferenceAwareRecommendationEngine` which already re-orders results based on stored rankings
+- Rankings stored in `data/user_preferences.json`, persisting across browser refreshes and diary regeneration
+
+**Backend routes (app.py):**
+- `POST /save_preferences` — accepts `query_ingredient` and `ranked_ingredients` array, calls `PREFERENCE_STORE.save_ranking()`
+- `GET /get_preferences/<ingredient>` — returns saved ranking with ingredient list and timestamp, or `no_data`
+- `DELETE /delete_preferences/<ingredient>` — deletes stored ranking via `PREFERENCE_STORE.delete_ranking()`
+
+**Frontend features:**
+- Tab 5 enabled after first recommendation query in Tab 4 (global state stores last recommendations and query ingredient)
+- Ranking interface: numbered input boxes (1–N) for each recommendation, pre-filled from saved preferences if they exist
+- Input validation: out-of-range values highlighted in red; partial ranking allowed (user need not rank all items)
+- Action buttons: Save Ranking (primary), Clear Saved Ranking (appears after save), Back to Recommendations (returns to Tab 4 and re-fetches to show updated preference explanations)
+- Info box explaining how preferences integrate with recommendations
+
+**Preference flow:**
+1. User queries ingredient in Tab 4 → Tab 5 enabled
+2. User switches to Tab 5 → ranking items rendered, existing preferences pre-filled
+3. User enters ranks (e.g., 1, 2, 3 for top three choices), clicks Save
+4. Backend stores ranked list via `UserPreferenceStore`
+5. User clicks "Back to Recommendations" → Tab 4 re-fetches
+6. `PreferenceAwareRecommendationEngine` finds stored ranking, re-orders results: ranked items first (in rank order), unranked items after (by similarity)
+7. Explanations update: "Your #1 choice", "Your #2 choice" for ranked items; unranked items unchanged
+
+**Design rationale:**
+- Simple numbered inputs for MVP (no drag-and-drop complexity)
+- Partial ranking allowed: users rank only items they care about
+- Explicit clear button provides user control over stored data
+- Preferences are ingredient-specific (one ranking per query ingredient), matching the `UserPreferenceStore` data model
+
+### 9.14 Limitations and Future Work
+
 - **Simplified case-crossover.** The co-occurrence counting is a placeholder for the full case-crossover algorithm. It produces reasonable results for single-trigger scenarios but does not implement discordant pair matching or Bayesian posterior estimation.
 - **Session cookie size.** Flask's default cookie-based sessions have a 4KB limit. The session size optimisation (storing only tested ingredients) keeps the current implementation within limits, but adding more data in future phases may require switching to server-side session storage (e.g., `flask-session` with filesystem backend).
 - **Fixed seed.** The diary generator uses `seed=42` for reproducibility. A future enhancement could expose the seed as a configurable parameter for exploring stochastic variation.
 - **Single-trigger group matching.** The group-aware warning currently references only the first matching trigger when multiple triggers share a group. A future enhancement could list all matching triggers in the warning.
 - **In-memory shrinkage result.** The full `FullShrinkageOutput` is stored in a module-level variable for explanation generation. This works for the single-user test lab but would not scale to multi-user production without server-side session storage.
-- **Preference component placeholder.** Explanations currently omit the Preference component (shows as `None`) because Tab 5 (user ranking) is not yet implemented.
+- **Duplicate rank handling.** Users can enter duplicate rank numbers (e.g., two items both ranked #1). The system accepts this by sorting and including both; a future enhancement could validate uniqueness client-side.

@@ -1,4 +1,8 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // --- Global state for Tab 5 preferences ---
+    let lastRecommendations = null;
+    let lastQueryIngredient = null;
+
     // --- Load ingredient pool ---
     const triggerSelect = document.getElementById("trigger-select");
 
@@ -46,6 +50,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             if (btn.dataset.tab === "tab4") {
                 loadRecommendationInterface();
+            }
+            if (btn.dataset.tab === "tab5") {
+                loadPreferenceInterface();
             }
         });
     });
@@ -204,6 +211,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Reset trigger dropdown
             loadIngredientPool();
+
+            // Clear global state
+            lastRecommendations = null;
+            lastQueryIngredient = null;
 
             // Clear status
             statusEl.className = "status-message";
@@ -468,6 +479,11 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.status === "success") {
                 renderRecommendations(data.recommendations, data.hide_same_group, data.n_same_group_hidden);
                 renderExcludedList(data.excluded_triggers);
+
+                // Store for Tab 5 and enable it
+                lastRecommendations = data.recommendations;
+                lastQueryIngredient = ingredient;
+                document.querySelector('[data-tab="tab5"]').disabled = false;
             } else {
                 listEl.innerHTML = `<p class="error-text">${data.message}</p>`;
             }
@@ -597,4 +613,163 @@ document.addEventListener("DOMContentLoaded", () => {
             list.appendChild(card);
         });
     }
+
+    // --- Tab 5: Preferences ---
+    async function loadPreferenceInterface() {
+        const emptyState = document.getElementById("pref-empty-state");
+        const interfaceEl = document.getElementById("pref-interface");
+
+        if (!lastRecommendations || !lastQueryIngredient) {
+            emptyState.style.display = "";
+            interfaceEl.style.display = "none";
+            return;
+        }
+
+        emptyState.style.display = "none";
+        interfaceEl.style.display = "";
+        document.getElementById("pref-query-ingredient").textContent = lastQueryIngredient;
+        document.getElementById("pref-status").className = "status-message";
+        document.getElementById("pref-status").textContent = "";
+
+        await renderRankingItems(lastRecommendations, lastQueryIngredient);
+    }
+
+    async function renderRankingItems(recommendations, queryIngredient) {
+        const container = document.getElementById("ranking-items-container");
+        const clearBtn = document.getElementById("clear-ranking-btn");
+        container.innerHTML = "";
+
+        // Fetch existing preferences
+        let existingRanking = null;
+        try {
+            const res = await fetch(`/get_preferences/${encodeURIComponent(queryIngredient)}`);
+            const data = await res.json();
+            if (data.status === "success") {
+                existingRanking = data.ranked_ingredients;
+                clearBtn.style.display = "";
+            } else {
+                clearBtn.style.display = "none";
+            }
+        } catch (err) {
+            clearBtn.style.display = "none";
+        }
+
+        recommendations.forEach((rec) => {
+            const item = document.createElement("div");
+            item.className = "ranking-item";
+
+            let prefillValue = "";
+            if (existingRanking) {
+                const idx = existingRanking.indexOf(rec.ingredient);
+                if (idx !== -1) prefillValue = idx + 1;
+            }
+
+            item.innerHTML = `
+                <span class="ranking-item-name">${rec.ingredient}</span>
+                <div class="ranking-input-wrapper">
+                    <span class="ranking-input-label">Rank:</span>
+                    <input type="number" class="ranking-input" min="1" max="${recommendations.length}"
+                           data-ingredient="${rec.ingredient}" value="${prefillValue}"
+                           placeholder="-">
+                </div>
+            `;
+            container.appendChild(item);
+        });
+
+        // Add validation listeners
+        container.querySelectorAll(".ranking-input").forEach((input) => {
+            input.addEventListener("input", validateRankingInput);
+        });
+    }
+
+    function validateRankingInput(e) {
+        const input = e.target;
+        const val = parseInt(input.value);
+        const max = parseInt(input.max);
+        if (input.value !== "" && (isNaN(val) || val < 1 || val > max)) {
+            input.classList.add("invalid");
+        } else {
+            input.classList.remove("invalid");
+        }
+    }
+
+    async function saveRanking() {
+        const inputs = document.querySelectorAll(".ranking-input");
+        const statusEl = document.getElementById("pref-status");
+        const rankings = [];
+
+        inputs.forEach((input) => {
+            const val = parseInt(input.value);
+            if (!isNaN(val) && val >= 1) {
+                rankings.push({ rank: val, ingredient: input.dataset.ingredient });
+            }
+        });
+
+        if (rankings.length === 0) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "Please enter at least one ranking.";
+            return;
+        }
+
+        rankings.sort((a, b) => a.rank - b.rank);
+        const ranked = rankings.map((r) => r.ingredient);
+
+        try {
+            const res = await fetch("/save_preferences", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query_ingredient: lastQueryIngredient, ranked_ingredients: ranked }),
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                statusEl.className = "status-message success";
+                statusEl.textContent = `Ranking saved! Ranked ${data.n_ranked} ingredients for '${data.query_ingredient}'.`;
+                document.getElementById("clear-ranking-btn").style.display = "";
+            } else {
+                statusEl.className = "status-message error";
+                statusEl.textContent = "Error: " + (data.message || "Save failed");
+            }
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "Error: " + err.message;
+        }
+    }
+
+    async function clearRanking() {
+        if (!confirm("Delete saved ranking for this ingredient?")) return;
+        const statusEl = document.getElementById("pref-status");
+
+        try {
+            const res = await fetch(`/delete_preferences/${encodeURIComponent(lastQueryIngredient)}`, { method: "DELETE" });
+            const data = await res.json();
+            if (data.status === "success") {
+                statusEl.className = "status-message success";
+                statusEl.textContent = "Ranking deleted.";
+                document.getElementById("clear-ranking-btn").style.display = "none";
+                document.querySelectorAll(".ranking-input").forEach((input) => {
+                    input.value = "";
+                    input.classList.remove("invalid");
+                });
+            } else {
+                statusEl.className = "status-message error";
+                statusEl.textContent = data.message || "Nothing to delete.";
+            }
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "Error: " + err.message;
+        }
+    }
+
+    function backToRecommendations() {
+        const tab4Btn = document.querySelector('[data-tab="tab4"]');
+        tab4Btn.click();
+        // Re-fetch recommendations so updated preferences are reflected
+        if (lastQueryIngredient) {
+            setTimeout(() => getRecommendationsFor(lastQueryIngredient), 100);
+        }
+    }
+
+    document.getElementById("save-ranking-btn").addEventListener("click", saveRanking);
+    document.getElementById("clear-ranking-btn").addEventListener("click", clearRanking);
+    document.getElementById("back-to-recs-btn").addEventListener("click", backToRecommendations);
 });

@@ -346,6 +346,49 @@ def get_diary_data():
     })
 
 
+@app.route("/save_preferences", methods=["POST"])
+def save_preferences():
+    data = request.get_json()
+    query = data.get("query_ingredient", "").strip()
+    ranked = data.get("ranked_ingredients", [])
+    if not query:
+        return jsonify({"status": "error", "message": "No ingredient specified."}), 400
+    if not ranked or not isinstance(ranked, list):
+        return jsonify({"status": "error", "message": "No rankings provided."}), 400
+    try:
+        PREFERENCE_STORE.save_ranking(query, ranked)
+        return jsonify({"status": "success", "query_ingredient": query, "n_ranked": len(ranked)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/get_preferences/<ingredient>")
+def get_preferences(ingredient):
+    try:
+        ranking = PREFERENCE_STORE.get_ranking(ingredient)
+        if ranking is None:
+            return jsonify({"status": "no_data", "message": "No preferences saved for this ingredient."})
+        return jsonify({
+            "status": "success",
+            "query_ingredient": ranking.query_ingredient,
+            "ranked_ingredients": ranking.ranked_ingredients,
+            "timestamp": ranking.timestamp.isoformat(),
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/delete_preferences/<ingredient>", methods=["DELETE"])
+def delete_preferences(ingredient):
+    try:
+        deleted = PREFERENCE_STORE.delete_ranking(ingredient)
+        if deleted:
+            return jsonify({"status": "success", "message": "Ranking deleted."})
+        return jsonify({"status": "no_data", "message": "No ranking found to delete."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/session/clear")
 def clear_session():
     global _last_shrinkage_result

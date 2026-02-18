@@ -254,7 +254,38 @@
 
             <div id="tab5" class="tab-pane">
                 <h2>Set Preferences</h2>
-                <p>Get recommendations first to set preferences.</p>
+
+                <div id="pref-empty-state" class="empty-state">
+                    <p>Get recommendations in Tab 4 first, then return here to set your preferences.</p>
+                </div>
+
+                <div id="pref-interface" style="display: none;">
+                    <div class="pref-header">
+                        <h3>Rank your preferred substitutes for '<span id="pref-query-ingredient">-</span>'</h3>
+                        <p class="help-text">Enter numbers 1-10 to rank these ingredients by preference (1 = most preferred).</p>
+                    </div>
+
+                    <div class="ranking-form">
+                        <div id="ranking-items-container" class="ranking-items"></div>
+                    </div>
+
+                    <div class="pref-actions">
+                        <button id="save-ranking-btn" class="btn-primary">Save Ranking</button>
+                        <button id="clear-ranking-btn" class="btn-secondary" style="display: none;">Clear Saved Ranking</button>
+                        <button id="back-to-recs-btn" class="btn-back">Back to Recommendations</button>
+                    </div>
+
+                    <div id="pref-status" class="status-message"></div>
+
+                    <div class="info-box" style="margin-top: 24px;">
+                        <span class="info-icon">&#128161;</span>
+                        <p class="info-text">
+                            <strong>How preferences work:</strong> Your rankings are saved and used to re-order
+                            recommendations in Tab 4. Higher-ranked items appear first, and the explanation will
+                            show "Your #2 choice" instead of "Not yet ranked". Preferences persist across sessions.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
