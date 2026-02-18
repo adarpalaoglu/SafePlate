@@ -36,6 +36,7 @@ class RecommendationExplanation:
     safety_reason: str
     similarity_reason: str
     preference_reason: Optional[str]
+    group_reason: Optional[str] = None
 
     def to_text(self) -> str:
         """Generate human-readable explanation text.
@@ -43,20 +44,26 @@ class RecommendationExplanation:
         Returns:
             Formatted explanation with Markdown bold headers and pipe separators.
         """
-        text = f"**Safety:** {self.safety_reason} | **Similarity:** {self.similarity_reason}"
+        parts = [
+            f"**Safety:** {self.safety_reason}",
+            f"**Similarity:** {self.similarity_reason}",
+        ]
+        if self.group_reason is not None:
+            parts.append(f"**Group:** {self.group_reason}")
         if self.preference_reason is not None:
-            text += f" | **Preference:** {self.preference_reason}"
-        return text
+            parts.append(f"**Preference:** {self.preference_reason}")
+        return " | ".join(parts)
 
     def to_dict(self) -> dict:
         """Convert explanation to dictionary for JSON serialization.
 
         Returns:
-            Dictionary with safety, similarity, and preference keys.
+            Dictionary with safety, similarity, group, and preference keys.
         """
         return {
             "safety": self.safety_reason,
             "similarity": self.similarity_reason,
+            "group": self.group_reason,
             "preference": self.preference_reason,
         }
 
@@ -476,7 +483,21 @@ class PreferenceAwareRecommendationEngine:
             f"based on recipe co-occurrence)"
         )
 
-        # Step 4: Generate preference reason
+        # Step 4: Generate group reason
+        group_reason = None
+        triggers = self._pipeline.get_trigger_ingredients(shrinkage_result)
+        rec_group = self._group_manager.get_group(rec.ingredient)
+        if rec_group:
+            for trigger in triggers:
+                trigger_group = self._group_manager.get_group(trigger)
+                if trigger_group and rec_group == trigger_group:
+                    group_reason = (
+                        f"Same group as trigger '{trigger}' "
+                        f"(may share chemical/biological properties)"
+                    )
+                    break
+
+        # Step 5: Generate preference reason
         if rec.user_rank is not None:
             preference_reason = f"You ranked this #{rec.user_rank} for {query} substitution"
         elif self._user_pref_store.has_ranking(query):
@@ -488,4 +509,5 @@ class PreferenceAwareRecommendationEngine:
             safety_reason=safety_reason,
             similarity_reason=similarity_reason,
             preference_reason=preference_reason,
+            group_reason=group_reason,
         )

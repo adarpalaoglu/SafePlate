@@ -452,17 +452,21 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("query-ingredient-display").textContent = ingredient;
         listEl.innerHTML = "<p>Loading recommendations...</p>";
 
+        // Check if same-group filtering is active
+        const toggleBtn = document.getElementById("toggle-same-group-btn");
+        const hideSameGroup = toggleBtn.classList.contains("active");
+
         try {
             const res = await fetch("/get_recommendations", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query_ingredient: ingredient }),
+                body: JSON.stringify({ query_ingredient: ingredient, hide_same_group: hideSameGroup }),
             });
 
             const data = await res.json();
 
             if (data.status === "success") {
-                renderRecommendations(data.recommendations);
+                renderRecommendations(data.recommendations, data.hide_same_group, data.n_same_group_hidden);
                 renderExcludedList(data.excluded_triggers);
             } else {
                 listEl.innerHTML = `<p class="error-text">${data.message}</p>`;
@@ -473,7 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function renderRecommendations(recommendations) {
+    function renderRecommendations(recommendations, hideSameGroup, nHidden) {
         const container = document.getElementById("recommendations-list");
         container.innerHTML = "";
 
@@ -502,55 +506,42 @@ document.addEventListener("DOMContentLoaded", () => {
                 `;
             }
 
+            if (rec.explanation) {
+                html += `
+                    <div class="recommendation-explanation">
+                        ${rec.explanation}
+                    </div>
+                `;
+            }
+
             card.innerHTML = html;
             container.appendChild(card);
         });
 
-        resetFilterToggle();
-    }
-
-    function resetFilterToggle() {
-        const toggleBtn = document.getElementById("toggle-same-group-btn");
+        // Update hidden count display from server response
         const hiddenCountDisplay = document.getElementById("hidden-count-display");
-        toggleBtn.textContent = "Hide Same-Group Items";
-        toggleBtn.classList.remove("active");
-        hiddenCountDisplay.style.display = "none";
-        document.querySelectorAll(".recommendation-card").forEach((card) => {
-            card.classList.remove("hidden-by-filter");
-        });
-        const msg = document.querySelector(".empty-filter-message");
-        if (msg) msg.remove();
-    }
-
-    function toggleSameGroupFilter() {
-        const toggleBtn = document.getElementById("toggle-same-group-btn");
-        const hiddenCountDisplay = document.getElementById("hidden-count-display");
-        const sameGroupCards = document.querySelectorAll('.recommendation-card[data-same-group="true"]');
-        const isHiding = toggleBtn.classList.contains("active");
-
-        if (isHiding) {
-            toggleBtn.textContent = "Hide Same-Group Items";
-            toggleBtn.classList.remove("active");
-            hiddenCountDisplay.style.display = "none";
-            sameGroupCards.forEach((c) => c.classList.remove("hidden-by-filter"));
-            const msg = document.querySelector(".empty-filter-message");
-            if (msg) msg.remove();
+        if (hideSameGroup && nHidden > 0) {
+            hiddenCountDisplay.textContent = `(Skipped ${nHidden} same-group item${nHidden > 1 ? "s" : ""} to show safe alternatives)`;
+            hiddenCountDisplay.style.display = "inline";
         } else {
-            toggleBtn.textContent = "Show All";
-            toggleBtn.classList.add("active");
-            sameGroupCards.forEach((c) => c.classList.add("hidden-by-filter"));
-            const count = sameGroupCards.length;
-            if (count > 0) {
-                hiddenCountDisplay.textContent = `Hidden: ${count} same-group item${count > 1 ? "s" : ""}`;
-                hiddenCountDisplay.style.display = "inline";
-            }
-            const allCards = document.querySelectorAll(".recommendation-card");
-            if (allCards.length === count && count > 0) {
-                const p = document.createElement("p");
-                p.className = "help-text empty-filter-message";
-                p.textContent = 'All recommendations are from the same group as triggers. Try "Show All" or query a different ingredient.';
-                document.getElementById("recommendations-list").appendChild(p);
-            }
+            hiddenCountDisplay.style.display = "none";
+        }
+    }
+
+    async function toggleSameGroupFilter() {
+        const toggleBtn = document.getElementById("toggle-same-group-btn");
+        const queryIngredient = document.getElementById("query-ingredient-display").textContent;
+
+        // Toggle the active state
+        toggleBtn.classList.toggle("active");
+
+        // Update button text based on state
+        const isNowActive = toggleBtn.classList.contains("active");
+        toggleBtn.textContent = isNowActive ? "Show All" : "Hide Same-Group Items";
+
+        // Re-fetch recommendations with new filter mode
+        if (queryIngredient && queryIngredient !== "-") {
+            await getRecommendationsFor(queryIngredient);
         }
     }
 

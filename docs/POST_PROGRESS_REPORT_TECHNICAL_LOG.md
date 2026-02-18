@@ -470,7 +470,7 @@ No scipy, pandas, or other heavy dependencies are required. All computation is c
 - **Integration pipeline:** February 4, 2026 (`integrated_pipeline.py` and notebook 06, validated end-to-end).
 - **Phase 1 Test Lab:** February 6, 2026 (4 new modules: diary generation, case-crossover simulation, user preferences, preference-aware recommendations; notebook 08 validation).
 - **Phase 3 Explainability:** February 11, 2026 (explanation generation with safety/similarity/preference components; Section 8 validation tests).
-- **Phase 2 Web UI:** February 12, 2026 (Flask app scaffold, diary display, trigger detection integration, configurable trigger selection, recommendation interface with group-aware warnings).
+- **Phase 2 Web UI:** February 12, 2026 (Flask app scaffold, diary display, trigger detection integration, configurable trigger selection, recommendation interface with group-aware warnings and multi-evidence explanations).
 - **Total lines of code:** ~450 (shrinkage module) + 233 (pipeline module) + ~470 (test_shrinkage.py) + ~250 (test_group_integration.py) + ~920 (Phase 1 Test Lab modules) + ~50 (Phase 3 explainability) + ~1,419 (Web UI) = ~3,792 lines of production and test code.
 
 ---
@@ -936,10 +936,72 @@ The filter state resets whenever new recommendations are loaded, ensuring a clea
 - Multiple triggers in the same group: the warning references the first matching trigger found
 - No same-group items in results: the toggle button still appears but has no effect; no count badge is shown
 
-### 9.11 Limitations and Future Work
+### 9.11 Recommendation Explanations (Integration)
+
+**Purpose:** Display multi-evidence explanations for each recommendation to support interpretability and trust.
+
+**Integration with Phase 3 explainability:** Phase 3 (pre-web UI) implemented `RecommendationExplanation` with three-component explanations (Section 8). This subsection integrates that backend capability into the Tab 4 UI.
+
+**Backend changes (app.py):**
+- Switched from `RecommendationEngine.find_substitutes()` to `PreferenceAwareRecommendationEngine.get_substitutes_with_preferences()` with `include_explanations=True`
+- Initialized `PreferenceAwareRecommendationEngine` and `UserPreferenceStore` at app startup
+- Stored the full `FullShrinkageOutput` in a module-level variable (acceptable for single-user test lab) so the preference engine can look up per-ingredient shrinkage statistics when generating explanations
+- Converted markdown `**bold**` to HTML `<strong>` tags using regex before sending to the frontend
+- Added `explanation` field to each recommendation in the JSON response
+- Fallback to basic `RecommendationEngine` if no shrinkage result is available in memory
+
+**Frontend changes:**
+- Modified `renderRecommendations()` in `main.js` to display explanation text below the similarity score (and below the group warning, if present)
+- Added CSS styles for `.recommendation-explanation` (light gray text, top border separator, 13px font)
+- Explanation text is always visible—not hidden behind a tooltip or accordion—because explanations are core to SafePlate's interpretability goals
+
+**Explanation components displayed:**
+1. **Safety:** Evidence from shrinkage model (e.g., "Not a trigger (OR=0.85, LOW confidence)" or "Protected safe (OR=0.00, 12 exposures with 0 symptoms)")
+2. **Similarity:** Node2Vec embedding context (e.g., "Similar to chicken (similarity=0.82, based on recipe co-occurrence)")
+3. **Group:** (conditional) Same-group warning when recommendation shares a food group with a detected trigger (e.g., "Same group as trigger 'cheddar cheese' (may share chemical/biological properties)")
+4. **Preference:** User ranking status (currently `None` since Tab 5 is not yet implemented; will show "You ranked this #2 for chicken substitution" after Phase 6)
+
+**Visual hierarchy (top to bottom within each card):**
+1. Ingredient name (#1–10) + similarity score (primary)
+2. Group warning badge (if applicable, terracotta)
+3. Explanation text (secondary, gray, smaller font, separated by 1px top border)
+
+### 9.12 Enhanced Same-Group Handling
+
+**Issues addressed:**
+1. Explanations did not mention group relationships—users saw a warning badge but no structured explanation of why group membership matters
+2. "Hide Same-Group" toggle only hid cards client-side, potentially leaving only 2–3 visible recommendations instead of the expected 10
+3. The concept of "same group" was not explained to users
+
+**Solution:**
+
+**Backend changes (`preference_aware_recommendation.py`):**
+- Added `group_reason: Optional[str]` field to `RecommendationExplanation` dataclass
+- Modified `to_text()` to include a `**Group:**` component between Similarity and Preference when present
+- Modified `generate_explanation()` to check group membership via `IngredientGroupManager` and populate the group reason when the recommendation shares a group with any detected trigger
+
+**Backend changes (`app.py`):**
+- Added `hide_same_group` request parameter to `POST /get_recommendations`
+- When `hide_same_group=True`, fetches `top_n=30` (conservative over-fetch) and filters same-group items server-side, returning the first 10 non-same-group results
+- When `hide_same_group=False`, fetches `top_n=10` as before (same-group items included with warnings)
+- Returns `n_same_group_hidden` count so the frontend can display how many items were skipped
+- Always guarantees 10 recommendations in both modes (unless fewer than 10 candidates exist total)
+
+**Frontend changes:**
+- Toggle button now triggers a server re-fetch (`getRecommendationsFor()`) instead of client-side `display: none` filtering
+- `renderRecommendations()` accepts `hideSameGroup` and `nHidden` parameters from the server response
+- Hidden count display updated from server data (e.g., "Skipped 18 same-group items to show safe alternatives")
+- Added info box explaining ingredient groups (light blue, informational styling) below the trigger pills section
+
+**Explanation format (4 components when same-group):**
+`**Safety:** ... | **Similarity:** ... | **Group:** Same group as trigger 'X' (may share chemical/biological properties) | **Preference:** ...`
+
+### 9.13 Limitations and Future Work
 
 - **Tab 5 is a placeholder.** Tab 5 (Set Preferences) contains placeholder text only. This will be implemented in a future phase to allow users to specify dietary preferences (e.g., vegetarian, vegan) that further filter recommendations.
 - **Simplified case-crossover.** The co-occurrence counting is a placeholder for the full case-crossover algorithm. It produces reasonable results for single-trigger scenarios but does not implement discordant pair matching or Bayesian posterior estimation.
 - **Session cookie size.** Flask's default cookie-based sessions have a 4KB limit. The session size optimisation (storing only tested ingredients) keeps the current implementation within limits, but adding more data in future phases may require switching to server-side session storage (e.g., `flask-session` with filesystem backend).
 - **Fixed seed.** The diary generator uses `seed=42` for reproducibility. A future enhancement could expose the seed as a configurable parameter for exploring stochastic variation.
 - **Single-trigger group matching.** The group-aware warning currently references only the first matching trigger when multiple triggers share a group. A future enhancement could list all matching triggers in the warning.
+- **In-memory shrinkage result.** The full `FullShrinkageOutput` is stored in a module-level variable for explanation generation. This works for the single-user test lab but would not scale to multi-user production without server-side session storage.
+- **Preference component placeholder.** Explanations currently omit the Preference component (shows as `None`) because Tab 5 (user ranking) is not yet implemented.

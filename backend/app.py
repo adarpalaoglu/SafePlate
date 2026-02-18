@@ -1,6 +1,7 @@
 """SafePlate Test Lab - Flask web interface for trigger detection evaluation."""
 
 import os
+import re
 from datetime import datetime
 from flask import Flask, render_template, request, session, jsonify
 import pandas as pd
@@ -9,6 +10,8 @@ from safeplate.integrated_pipeline import SafePlatePipeline, PipelineConfig
 from safeplate.embedding_loader import EmbeddingLoader
 from safeplate.ingredient_groups import IngredientGroupManager
 from safeplate.recommendation_engine import RecommendationEngine
+from safeplate.preference_aware_recommendation import PreferenceAwareRecommendationEngine
+from safeplate.user_preferences import UserPreferenceStore
 
 app = Flask(__name__)
 app.secret_key = "safeplate-test-lab-secret-key-cs310"
@@ -41,6 +44,18 @@ PIPELINE = SafePlatePipeline(
     config=PIPELINE_CONFIG,
 )
 RECOMMENDATION_ENGINE = RecommendationEngine(embedding_loader=EMBEDDING_LOADER)
+
+# Initialize preference-aware recommendation engine
+PREFERENCE_STORE = UserPreferenceStore("data/user_preferences.json")
+PREFERENCE_ENGINE = PreferenceAwareRecommendationEngine(
+    pipeline=PIPELINE,
+    group_manager=GROUP_MANAGER,
+    embedding_loader=EMBEDDING_LOADER,
+    user_pref_store=PREFERENCE_STORE,
+)
+
+# Store last shrinkage result for recommendation explanations (single-user test lab)
+_last_shrinkage_result = None
 
 
 @app.route("/")
@@ -157,8 +172,10 @@ def run_detection():
                     "V_ctrl_not_case": V,
                 })
 
+        global _last_shrinkage_result
         ingredient_stats = pd.DataFrame(stats)
         shrinkage_result = PIPELINE.detect_triggers_from_stats(ingredient_stats)
+        _last_shrinkage_result = shrinkage_result
         summary = PIPELINE.get_pipeline_summary(shrinkage_result)
 
         # Store results in session (only tested ingredients to keep cookie small)
@@ -220,36 +237,83 @@ def get_recommendations():
 
     data = request.get_json()
     query = data.get("query_ingredient", "").strip()
+    hide_same_group = data.get("hide_same_group", False)
     if not query:
         return jsonify({"status": "error", "message": "No ingredient specified."}), 400
 
     try:
         trigger_list = result["summary"].get("trigger_list", [])
-        recommendations = RECOMMENDATION_ENGINE.find_substitutes(
-            ingredient=query,
-            triggers=trigger_list,
-            top_n=PIPELINE_CONFIG.recommendation_top_n,
-        )
-        # Check group membership for each recommendation
+        # Fetch more when filtering same-group to guarantee 10 results
+        fetch_count = 30 if hide_same_group else 10
+
+        # Use preference engine with explanations if shrinkage result available
+        if _last_shrinkage_result is not None:
+            all_recommendations = PREFERENCE_ENGINE.get_substitutes_with_preferences(
+                query_ingredient=query,
+                shrinkage_result=_last_shrinkage_result,
+                top_n=fetch_count,
+                include_explanations=True,
+            )
+        else:
+            # Fallback to basic engine if no shrinkage result in memory
+            basic_recs = RECOMMENDATION_ENGINE.find_substitutes(
+                ingredient=query,
+                triggers=trigger_list,
+                top_n=fetch_count,
+            )
+            from safeplate.preference_aware_recommendation import Recommendation
+            all_recommendations = [
+                Recommendation(ingredient=name, similarity_score=score, is_safe=True, user_rank=None, explanation=None)
+                for name, score in basic_recs
+            ]
+
+        # Check group membership and filter if needed
         enhanced = []
-        for name, score in recommendations:
-            rec = {"ingredient": name, "similarity": float(score), "is_same_group": False, "same_group_as_trigger": None}
-            rec_group = GROUP_MANAGER.get_group(name)
+        n_same_group_skipped = 0
+        for rec in all_recommendations:
+            # Check group membership
+            is_same_group = False
+            same_group_trigger = None
+            rec_group = GROUP_MANAGER.get_group(rec.ingredient)
             if rec_group:
                 for trigger in trigger_list:
                     trigger_group = GROUP_MANAGER.get_group(trigger)
                     if trigger_group and rec_group == trigger_group:
-                        rec["is_same_group"] = True
-                        rec["same_group_as_trigger"] = trigger
+                        is_same_group = True
+                        same_group_trigger = trigger
                         break
-            enhanced.append(rec)
+
+            # Skip same-group items when filtering is active
+            if hide_same_group and is_same_group:
+                n_same_group_skipped += 1
+                continue
+
+            explanation_text = None
+            if rec.explanation:
+                explanation_text = rec.explanation.to_text()
+                # Convert markdown **bold** to HTML <strong>
+                explanation_text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', explanation_text)
+
+            enhanced.append({
+                "ingredient": rec.ingredient,
+                "similarity": float(rec.similarity_score),
+                "is_same_group": is_same_group,
+                "same_group_as_trigger": same_group_trigger,
+                "explanation": explanation_text,
+            })
+
+            # Stop once we have 10
+            if len(enhanced) >= 10:
+                break
 
         return jsonify({
             "status": "success",
             "query_ingredient": query,
             "recommendations": enhanced,
             "excluded_triggers": trigger_list,
-            "n_recommendations": len(recommendations),
+            "n_recommendations": len(enhanced),
+            "hide_same_group": hide_same_group,
+            "n_same_group_hidden": n_same_group_skipped,
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -284,7 +348,9 @@ def get_diary_data():
 
 @app.route("/session/clear")
 def clear_session():
+    global _last_shrinkage_result
     session.clear()
+    _last_shrinkage_result = None
     return jsonify({"status": "cleared"})
 
 
