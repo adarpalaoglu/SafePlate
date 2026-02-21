@@ -1,9 +1,9 @@
 """SafePlate Test Lab - Flask web interface for trigger detection evaluation."""
 
-import os
+import math
 import re
 from datetime import datetime
-from flask import Flask, render_template, request, session, jsonify
+from flask import Flask, render_template, request, jsonify
 import pandas as pd
 from safeplate.diary_generator import DiaryGenerator, DiaryGeneratorConfig
 from safeplate.integrated_pipeline import SafePlatePipeline, PipelineConfig
@@ -12,12 +12,14 @@ from safeplate.ingredient_groups import IngredientGroupManager
 from safeplate.recommendation_engine import RecommendationEngine
 from safeplate.preference_aware_recommendation import PreferenceAwareRecommendationEngine
 from safeplate.user_preferences import UserPreferenceStore
+from safeplate.group_aware_trigger_detector import (
+    ShrinkageResult,
+    FullShrinkageOutput,
+)
 
 app = Flask(__name__)
-app.secret_key = "safeplate-test-lab-secret-key-cs310"
-app.config["SESSION_PERMANENT"] = True
 
-# Hardcoded ingredient pool and triggers for the test lab
+# Fallback ingredient pool for random-mode diary generation
 INGREDIENT_POOL = [
     "milk", "cheddar cheese", "mozzarella", "parmesan", "butter",
     "egg", "chicken", "beef", "pork", "salmon",
@@ -31,10 +33,12 @@ NEGATIVE_CONTROL = "olive oil"
 
 # Initialize pipeline components once at startup
 EMBEDDING_LOADER = EmbeddingLoader()
+# Full ingredient vocabulary from embeddings (available as triggers)
+ALL_INGREDIENTS = sorted(EMBEDDING_LOADER.get_all_ingredients())
 GROUP_MANAGER = IngredientGroupManager()
 PIPELINE_CONFIG = PipelineConfig(
-    trigger_or_threshold=1.0,
-    trigger_min_confidence="MEDIUM",
+    trigger_or_threshold=1.5,
+    trigger_min_confidence="HIGH",
     propagate_to_untested=True,
     recommendation_top_n=10,
 )
@@ -54,7 +58,14 @@ PREFERENCE_ENGINE = PreferenceAwareRecommendationEngine(
     user_pref_store=PREFERENCE_STORE,
 )
 
-# Store last shrinkage result for recommendation explanations (single-user test lab)
+# Module-level storage for diary data (single-user test lab).
+# Flask session cookies have a ~4 KB limit. Real-recipe meals easily exceed
+# this, causing silent data loss. Module-level variables avoid the limit.
+_diary_meals = None
+_diary_symptoms = None
+_diary_config = None
+_selected_trigger = None
+_shrinkage_result = None
 _last_shrinkage_result = None
 
 
@@ -72,13 +83,22 @@ def get_ingredient_pool():
     })
 
 
+@app.route("/get_all_ingredients")
+def get_all_ingredients():
+    return jsonify({
+        "status": "success",
+        "ingredients": ALL_INGREDIENTS,
+        "default_trigger": DEFAULT_TRIGGER,
+    })
+
+
 @app.route("/generate_diary", methods=["POST"])
 def generate_diary():
     try:
         data = request.get_json()
 
         selected_trigger = data.get("selected_trigger", DEFAULT_TRIGGER)
-        if selected_trigger not in INGREDIENT_POOL:
+        if selected_trigger not in ALL_INGREDIENTS:
             return jsonify({"status": "error", "message": f"Invalid trigger ingredient: {selected_trigger}"}), 400
 
         config = DiaryGeneratorConfig(
@@ -94,6 +114,8 @@ def generate_diary():
             baseline_symptom_rate=float(data["baseline_symptom_rate"]),
             hazard_window_hours=int(data["hazard_window_hours"]),
             min_lag_hours=int(data["min_lag_hours"]),
+            use_real_recipes=True,
+            recipe_dataset_path="data/processed/recipes_cleaned.csv",
         )
 
         generator = DiaryGenerator(config, seed=42)
@@ -107,6 +129,7 @@ def generate_diary():
                 "timestamp": meal["timestamp"].isoformat(),
                 "meal_id": meal["meal_id"],
                 "ingredients": meal["ingredients"],
+                "recipe_name": meal.get("recipe_name"),
             })
 
         serialisable_symptoms = []
@@ -117,10 +140,11 @@ def generate_diary():
                 "episode_id": symptom["episode_id"],
             })
 
-        session["diary_config"] = data
-        session["meals"] = serialisable_meals
-        session["symptoms"] = serialisable_symptoms
-        session["selected_trigger"] = selected_trigger
+        global _diary_meals, _diary_symptoms, _diary_config, _selected_trigger
+        _diary_config = data
+        _diary_meals = serialisable_meals
+        _diary_symptoms = serialisable_symptoms
+        _selected_trigger = selected_trigger
 
         return jsonify({
             "status": "success",
@@ -134,8 +158,8 @@ def generate_diary():
 
 @app.route("/run_detection", methods=["POST"])
 def run_detection():
-    meals = session.get("meals")
-    symptoms = session.get("symptoms")
+    meals = _diary_meals
+    symptoms = _diary_symptoms
 
     if not meals or symptoms is None:
         return jsonify({"status": "error", "message": "No diary found. Generate a diary first."}), 400
@@ -147,7 +171,7 @@ def run_detection():
             all_ingredients.update(meal["ingredients"])
 
         # Simplified case-crossover: count symptom co-occurrences per ingredient
-        config = session.get("diary_config", {})
+        config = _diary_config or {}
         hazard_window = config.get("hazard_window_hours", 6)
         min_lag = config.get("min_lag_hours", 1)
 
@@ -172,14 +196,45 @@ def run_detection():
                     "V_ctrl_not_case": V,
                 })
 
-        global _last_shrinkage_result
-        ingredient_stats = pd.DataFrame(stats)
-        shrinkage_result = PIPELINE.detect_triggers_from_stats(ingredient_stats)
-        _last_shrinkage_result = shrinkage_result
-        summary = PIPELINE.get_pipeline_summary(shrinkage_result)
+        # Build raw OR results without shrinkage.  Shrinkage pulls
+        # real triggers toward the group mean and inflates confounded
+        # co-occurring ingredients — bypassing it gives cleaner results
+        # when meals come from real recipes with ingredient clustering.
+        results = []
+        for row in stats:
+            U = row["U_case_not_ctrl"]
+            V = row["V_ctrl_not_case"]
+            raw_OR = (U + 0.5) / (V + 0.5)
+            log_OR = math.log(raw_OR) if raw_OR > 0 else 0.0
+            n = U + V
+            # Confidence based on sample size and significance
+            if n >= 10 and raw_OR > 1.0:
+                confidence = "HIGH"
+            elif n >= 5:
+                confidence = "MEDIUM"
+            else:
+                confidence = "LOW"
 
-        # Store results in session (only tested ingredients to keep cookie small)
-        session["shrinkage_result"] = {
+            group = GROUP_MANAGER.get_group(row["ingredient"])
+            results.append(ShrinkageResult(
+                ingredient=row["ingredient"],
+                U=U, V=V,
+                raw_log_OR=log_OR, raw_OR=raw_OR,
+                sigma_sq=1.0 / max(n, 1),
+                group=group,
+                final_log_OR=log_OR, final_OR=raw_OR,
+                weight=0.0, mu_g=0.0, tau_sq=0.0,
+                confidence=confidence,
+                evidence_source="raw_case_crossover",
+                protected=False,
+            ))
+
+        global _last_shrinkage_result, _shrinkage_result
+        raw_result = FullShrinkageOutput(ingredients=results, groups=[])
+        _last_shrinkage_result = raw_result
+        summary = PIPELINE.get_pipeline_summary(raw_result)
+
+        _shrinkage_result = {
             "ingredients": [
                 {
                     "ingredient": r.ingredient,
@@ -189,8 +244,8 @@ def run_detection():
                     "V": r.V,
                     "protected": r.protected,
                 }
-                for r in shrinkage_result.ingredients
-                if r.U + r.V > 0 or r.protected
+                for r in raw_result.ingredients
+                if r.U + r.V > 0
             ],
             "summary": summary,
         }
@@ -208,32 +263,31 @@ def run_detection():
 
 @app.route("/get_detection_results")
 def get_detection_results():
-    result = session.get("shrinkage_result")
-    if not result:
+    if not _shrinkage_result:
         return jsonify({"status": "no_data"})
     return jsonify({
         "status": "success",
-        "ingredients": result["ingredients"],
-        "summary": result["summary"],
-        "ground_truth_trigger": session.get("selected_trigger", "Unknown"),
+        "ingredients": _shrinkage_result["ingredients"],
+        "summary": _shrinkage_result["summary"],
+        "ground_truth_trigger": _selected_trigger or "Unknown",
     })
 
 
 @app.route("/get_diary_ingredients")
 def get_diary_ingredients():
-    if "meals" not in session:
+    if not _diary_meals:
         return jsonify({"status": "no_data"})
     unique = set()
-    for meal in session["meals"]:
+    for meal in _diary_meals:
         unique.update(meal["ingredients"])
     return jsonify({"status": "success", "ingredients": sorted(unique)})
 
 
 @app.route("/get_recommendations", methods=["POST"])
 def get_recommendations():
-    result = session.get("shrinkage_result")
-    if not result:
+    if not _shrinkage_result:
         return jsonify({"status": "error", "message": "No trigger detection results found. Run detection first."}), 400
+    result = _shrinkage_result
 
     data = request.get_json()
     query = data.get("query_ingredient", "").strip()
@@ -321,26 +375,24 @@ def get_recommendations():
 
 @app.route("/get_diary_data")
 def get_diary_data():
-    meals = session.get("meals")
-    symptoms = session.get("symptoms")
-    diary_config = session.get("diary_config")
-
-    if not meals or not symptoms:
+    if not _diary_meals or not _diary_symptoms:
         return jsonify({"status": "no_data"})
 
+    sorted_meals = sorted(_diary_meals, key=lambda m: m["timestamp"])
+    sorted_symptoms = sorted(_diary_symptoms, key=lambda s: s["timestamp"])
+
     # Compute date range from first and last meal timestamps
-    timestamps = [m["timestamp"] for m in meals]
-    first_date = timestamps[0][:10]
-    last_date = timestamps[-1][:10]
+    first_date = sorted_meals[0]["timestamp"][:10]
+    last_date = sorted_meals[-1]["timestamp"][:10]
 
     return jsonify({
         "status": "success",
-        "meals": meals,
-        "symptoms": symptoms,
+        "meals": sorted_meals,
+        "symptoms": sorted_symptoms,
         "summary": {
-            "n_meals": len(meals),
-            "n_symptoms": len(symptoms),
-            "n_days": diary_config["n_days"],
+            "n_meals": len(_diary_meals),
+            "n_symptoms": len(_diary_symptoms),
+            "n_days": _diary_config["n_days"],
             "date_range": f"{first_date} to {last_date}",
         },
     })
@@ -391,11 +443,16 @@ def delete_preferences(ingredient):
 
 @app.route("/session/clear")
 def clear_session():
-    global _last_shrinkage_result
-    session.clear()
+    global _diary_meals, _diary_symptoms, _diary_config, _selected_trigger
+    global _shrinkage_result, _last_shrinkage_result
+    _diary_meals = None
+    _diary_symptoms = None
+    _diary_config = None
+    _selected_trigger = None
+    _shrinkage_result = None
     _last_shrinkage_result = None
     return jsonify({"status": "cleared"})
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)

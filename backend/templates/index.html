@@ -82,11 +82,18 @@
                 <div class="config-section trigger-config">
                     <h3>Trigger Configuration</h3>
                     <div class="param-group">
-                        <label for="trigger-select">Ground Truth Trigger Ingredient:</label>
-                        <select id="trigger-select" class="trigger-dropdown">
-                            <option value="">Loading ingredients...</option>
-                        </select>
-                        <p class="help-text">This ingredient will have elevated probability of causing symptoms in the synthetic diary.</p>
+                        <label>Ground Truth Trigger Ingredient:</label>
+                        <div class="searchable-dropdown" id="trigger-dropdown-container">
+                            <input type="text" id="trigger-search" class="trigger-search-input"
+                                   placeholder="Search ingredients... (e.g., chicken, tomato, cheese)"
+                                   autocomplete="off">
+                            <div id="trigger-dropdown-list" class="trigger-dropdown-list"></div>
+                        </div>
+                        <div id="trigger-selected-display" class="trigger-selected-display">
+                            Selected: <strong id="trigger-selected-name">cheddar cheese</strong>
+                            <button id="trigger-clear-btn" class="trigger-clear-btn" title="Clear selection">&times;</button>
+                        </div>
+                        <p class="help-text">This ingredient will have elevated probability of causing symptoms in the synthetic diary. <span id="trigger-ingredient-count"></span></p>
                     </div>
                 </div>
 
@@ -141,7 +148,7 @@
 
                 <div id="detection-empty-state" class="empty-state">
                     <p>Click the button below to analyze your diary and detect potential trigger ingredients.</p>
-                    <button id="run-detection-btn" class="btn-primary" style="margin-top: 16px;">Run Shrinkage Analysis</button>
+                    <button id="run-detection-btn" class="btn-primary" style="margin-top: 16px;">Run Detection Analysis</button>
                     <div id="detection-status" class="status-message"></div>
                 </div>
 
@@ -156,7 +163,7 @@
                         <h3>Detection Summary</h3>
                         <div class="summary-stats">
                             <div class="stat-item">
-                                <span class="stat-label">Triggers Detected</span>
+                                <span class="stat-label">High-Confidence Triggers</span>
                                 <span id="det-summary-triggers" class="stat-value">-</span>
                             </div>
                             <div class="stat-item">
@@ -176,6 +183,16 @@
 
                     <div class="results-table-container">
                         <h3>Ingredient Analysis Results</h3>
+                        <p class="help-text" style="margin-bottom: 8px;">
+                            Showing top 10 most suspicious ingredients based on statistical evidence.
+                            Uses raw case-crossover odds ratios with co-occurrence adjustment
+                            to reduce confounding from recipe clustering.
+                        </p>
+                        <p id="detection-filter-summary" class="filter-summary"></p>
+                        <label class="show-all-toggle">
+                            <input type="checkbox" id="show-all-results">
+                            Show all tested ingredients (including low confidence and low OR)
+                        </label>
                         <table class="detection-table">
                             <thead>
                                 <tr>

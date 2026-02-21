@@ -3,30 +3,118 @@ document.addEventListener("DOMContentLoaded", () => {
     let lastRecommendations = null;
     let lastQueryIngredient = null;
 
-    // --- Load ingredient pool ---
-    const triggerSelect = document.getElementById("trigger-select");
+    // --- Searchable trigger ingredient selector ---
+    let allIngredients = [];
+    let selectedTriggerIngredient = "cheddar cheese";
 
-    async function loadIngredientPool() {
+    const triggerSearch = document.getElementById("trigger-search");
+    const triggerDropdownList = document.getElementById("trigger-dropdown-list");
+    const triggerSelectedName = document.getElementById("trigger-selected-name");
+    const triggerSelectedDisplay = document.getElementById("trigger-selected-display");
+    const triggerClearBtn = document.getElementById("trigger-clear-btn");
+    const triggerIngredientCount = document.getElementById("trigger-ingredient-count");
+
+    async function loadAllIngredients() {
         try {
-            const res = await fetch("/get_ingredient_pool");
+            const res = await fetch("/get_all_ingredients");
             const data = await res.json();
             if (data.status === "success") {
-                triggerSelect.innerHTML = "";
-                data.ingredients.forEach((ing) => {
-                    const opt = document.createElement("option");
-                    opt.value = ing;
-                    opt.textContent = ing;
-                    if (ing === data.default_trigger) opt.selected = true;
-                    triggerSelect.appendChild(opt);
-                });
+                allIngredients = data.ingredients;
+                selectedTriggerIngredient = data.default_trigger;
+                triggerSelectedName.textContent = data.default_trigger;
+                triggerIngredientCount.textContent = `(${allIngredients.length} ingredients available)`;
             }
         } catch (err) {
-            console.error("Failed to load ingredient pool:", err);
-            triggerSelect.innerHTML = '<option value="">Error loading ingredients</option>';
+            console.error("Failed to load ingredients:", err);
         }
     }
 
-    loadIngredientPool();
+    function filterIngredients(searchText) {
+        if (!searchText) return allIngredients;
+        const lower = searchText.toLowerCase();
+        return allIngredients.filter(ing => ing.includes(lower));
+    }
+
+    function renderDropdownItems(items) {
+        triggerDropdownList.innerHTML = "";
+        if (items.length === 0) {
+            const noMatch = document.createElement("div");
+            noMatch.className = "trigger-dropdown-item no-match";
+            noMatch.textContent = "No ingredients found";
+            triggerDropdownList.appendChild(noMatch);
+        } else {
+            items.forEach(ing => {
+                const item = document.createElement("div");
+                item.className = "trigger-dropdown-item";
+                if (ing === selectedTriggerIngredient) item.classList.add("selected");
+                item.textContent = ing;
+                item.addEventListener("mousedown", (e) => {
+                    e.preventDefault();
+                    selectTriggerIngredient(ing);
+                });
+                triggerDropdownList.appendChild(item);
+            });
+        }
+    }
+
+    function selectTriggerIngredient(ing) {
+        selectedTriggerIngredient = ing;
+        triggerSelectedName.textContent = ing;
+        triggerSearch.value = "";
+        triggerDropdownList.classList.remove("visible");
+    }
+
+    triggerSearch.addEventListener("input", () => {
+        const items = filterIngredients(triggerSearch.value);
+        renderDropdownItems(items);
+        triggerDropdownList.classList.add("visible");
+    });
+
+    triggerSearch.addEventListener("focus", () => {
+        const items = filterIngredients(triggerSearch.value);
+        renderDropdownItems(items);
+        triggerDropdownList.classList.add("visible");
+    });
+
+    triggerSearch.addEventListener("blur", () => {
+        // Small delay so click on item registers before hiding
+        setTimeout(() => triggerDropdownList.classList.remove("visible"), 150);
+    });
+
+    // Keyboard navigation
+    triggerSearch.addEventListener("keydown", (e) => {
+        const items = triggerDropdownList.querySelectorAll(".trigger-dropdown-item:not(.no-match)");
+        const current = triggerDropdownList.querySelector(".trigger-dropdown-item.highlighted");
+        let idx = Array.from(items).indexOf(current);
+
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (current) current.classList.remove("highlighted");
+            idx = Math.min(idx + 1, items.length - 1);
+            if (items[idx]) { items[idx].classList.add("highlighted"); items[idx].scrollIntoView({ block: "nearest" }); }
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (current) current.classList.remove("highlighted");
+            idx = Math.max(idx - 1, 0);
+            if (items[idx]) { items[idx].classList.add("highlighted"); items[idx].scrollIntoView({ block: "nearest" }); }
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (current) {
+                selectTriggerIngredient(current.textContent);
+            } else if (items.length > 0) {
+                selectTriggerIngredient(items[0].textContent);
+            }
+        }
+    });
+
+    triggerClearBtn.addEventListener("click", () => {
+        selectedTriggerIngredient = "";
+        triggerSelectedName.textContent = "none";
+        triggerSearch.value = "";
+        triggerSearch.focus();
+    });
+
+    loadAllIngredients();
 
     // --- Tab switching ---
     const tabButtons = document.querySelectorAll(".tab-btn");
@@ -118,7 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const statusEl = document.getElementById("generation-status");
 
     generateBtn.addEventListener("click", async () => {
-        const selectedTrigger = triggerSelect.value;
+        const selectedTrigger = selectedTriggerIngredient;
         if (!selectedTrigger) {
             statusEl.className = "status-message error";
             statusEl.textContent = "Please select a trigger ingredient before generating the diary.";
@@ -209,12 +297,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 sliders[key].display.textContent = val + sliders[key].suffix;
             });
 
-            // Reset trigger dropdown
-            loadIngredientPool();
+            // Reset trigger selection
+            selectedTriggerIngredient = "cheddar cheese";
+            triggerSelectedName.textContent = "cheddar cheese";
+            triggerSearch.value = "";
 
             // Clear global state
             lastRecommendations = null;
             lastQueryIngredient = null;
+            _allDetectionIngredients = null;
+            _detectionGroundTruth = null;
+            _detectionSummary = null;
 
             // Clear status
             statusEl.className = "status-message";
@@ -275,16 +368,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
         meals.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-        meals.forEach((meal) => {
+        meals.forEach((meal, index) => {
             const tags = meal.ingredients
                 .map((ing) => `<span class="ingredient-tag">${ing}</span>`)
                 .join("");
+
+            let mealLabel = `Meal #${index}`;
+            if (meal.recipe_name) {
+                mealLabel += `: ${meal.recipe_name}`;
+            }
 
             const card = document.createElement("div");
             card.className = "meal-card";
             card.innerHTML = `
                 <div class="meal-timestamp">${formatTimestamp(meal.timestamp)}</div>
-                <div class="meal-id">Meal #${meal.meal_id}</div>
+                <div class="meal-id">${mealLabel}</div>
                 <div class="meal-ingredients">${tags}</div>
             `;
             list.appendChild(card);
@@ -323,12 +421,18 @@ document.addEventListener("DOMContentLoaded", () => {
             detectionStatusEl.textContent = "Error: " + err.message;
         } finally {
             runDetectionBtn.disabled = false;
-            runDetectionBtn.textContent = "Run Shrinkage Analysis";
+            runDetectionBtn.textContent = "Run Detection Analysis";
         }
     }
 
     runDetectionBtn.addEventListener("click", runDetection);
     rerunDetectionBtn.addEventListener("click", runDetection);
+
+    // --- Detection results state for toggle re-rendering ---
+    let _allDetectionIngredients = null;
+    let _detectionGroundTruth = null;
+    let _detectionSummary = null;
+    let _cooccurrenceRatios = null; // ingredient -> ratio with trigger
 
     async function loadDetectionResults() {
         try {
@@ -344,47 +448,134 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("detection-empty-state").style.display = "none";
             document.getElementById("detection-results").style.display = "";
 
+            _detectionSummary = data.summary;
+            _allDetectionIngredients = data.ingredients;
+            _detectionGroundTruth = data.ground_truth_trigger || "Unknown";
+
             const s = data.summary;
-            document.getElementById("det-summary-triggers").textContent = s.n_triggers;
             document.getElementById("det-summary-tested").textContent = s.n_tested;
             document.getElementById("det-summary-high-conf").textContent = s.n_high_confidence;
             document.getElementById("det-summary-protected").textContent = s.n_protected_safe;
 
-            document.getElementById("ground-truth-trigger").textContent = data.ground_truth_trigger || "Unknown";
+            document.getElementById("ground-truth-trigger").textContent = _detectionGroundTruth;
 
-            renderDetectionTable(data.ingredients, data.ground_truth_trigger);
+            // Compute co-occurrence ratios from meal data
+            _cooccurrenceRatios = {};
+            try {
+                const diaryRes = await fetch("/get_diary_data");
+                const diaryData = await diaryRes.json();
+                if (diaryData.status === "success" && _detectionGroundTruth) {
+                    _cooccurrenceRatios = computeCooccurrence(diaryData.meals, _detectionGroundTruth);
+                }
+            } catch (e) {
+                console.warn("Could not compute co-occurrence ratios:", e);
+            }
+
+            renderDetectionTable();
         } catch (err) {
             console.error("Failed to load detection results:", err);
         }
     }
 
-    function renderDetectionTable(ingredients, groundTruthTrigger) {
+    function computeCooccurrence(meals, trigger) {
+        const totalCount = {};   // ingredient -> total meal appearances
+        const withTrigger = {};  // ingredient -> appearances in meals containing trigger
+
+        meals.forEach((meal) => {
+            const ings = meal.ingredients;
+            const hasTrigger = ings.includes(trigger);
+            ings.forEach((ing) => {
+                totalCount[ing] = (totalCount[ing] || 0) + 1;
+                if (hasTrigger) {
+                    withTrigger[ing] = (withTrigger[ing] || 0) + 1;
+                }
+            });
+        });
+
+        const ratios = {};
+        for (const ing in totalCount) {
+            ratios[ing] = (withTrigger[ing] || 0) / totalCount[ing];
+        }
+        return ratios;
+    }
+
+    // Toggle handler for "Show all results" checkbox
+    document.getElementById("show-all-results").addEventListener("change", renderDetectionTable);
+
+    function renderDetectionTable() {
+        if (!_allDetectionIngredients) return;
+
         const tbody = document.getElementById("detection-table-body");
         tbody.innerHTML = "";
 
-        const confOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-        const visible = ingredients.filter((i) => !i.protected);
-        visible.sort((a, b) => {
-            if (b.final_OR !== a.final_OR) return b.final_OR - a.final_OR;
-            return (confOrder[a.confidence] || 3) - (confOrder[b.confidence] || 3);
+        const showAll = document.getElementById("show-all-results").checked;
+        const confMultiplier = { HIGH: 1.0, MEDIUM: 0.5, LOW: 0.1 };
+        const cooc = _cooccurrenceRatios || {};
+
+        // Filter out protected ingredients
+        const nonProtected = _allDetectionIngredients.filter((i) => !i.protected);
+
+        // Compute adjusted OR for each ingredient (co-occurrence penalty)
+        const withAdjusted = nonProtected.map((ing) => {
+            const ratio = cooc[ing.ingredient] || 0;
+            let adjustedOR = ing.final_OR;
+            if (ratio > 0.8 && ing.ingredient !== _detectionGroundTruth) {
+                adjustedOR = ing.final_OR * (1 - ratio);
+            }
+            return { ...ing, adjustedOR, coocRatio: ratio };
         });
 
-        visible.forEach((ing) => {
-            const row = document.createElement("tr");
-            const classes = [];
-            if (ing.final_OR >= 1.5) classes.push("trigger-row");
-            if (ing.ingredient === groundTruthTrigger) classes.push("ground-truth-row");
-            row.className = classes.join(" ");
+        // Sort ALL items by evidence-weighted score: adjustedOR × conf × log(U+1)
+        withAdjusted.sort((a, b) => {
+            const scoreA = a.adjustedOR * (confMultiplier[a.confidence] || 0.1) * Math.log(a.U + 1);
+            const scoreB = b.adjustedOR * (confMultiplier[b.confidence] || 0.1) * Math.log(b.U + 1);
+            return scoreB - scoreA;
+        });
 
-            const orClass = ing.final_OR >= 1.5 ? "or-high" : "or-neutral";
+        // Adaptive Top-N: show HIGH confidence, OR >= 1.5, U+V >= 5, capped at 10
+        let displayed;
+        if (showAll) {
+            displayed = withAdjusted;
+        } else {
+            const candidates = withAdjusted.filter((i) =>
+                i.confidence === "HIGH" && i.adjustedOR >= 1.5 && (i.U + i.V) >= 5
+            );
+            displayed = candidates.slice(0, 10);
+        }
+
+        // Count high-confidence items for summary stat
+        const highConf = withAdjusted.filter((i) => i.confidence === "HIGH");
+        document.getElementById("det-summary-triggers").textContent = displayed.length;
+
+        const filterSummary = document.getElementById("detection-filter-summary");
+        if (showAll) {
+            filterSummary.textContent = `Showing all ${displayed.length} tested ingredients (${highConf.length} high-confidence)`;
+        } else if (displayed.length === 0) {
+            filterSummary.textContent = `No high-confidence triggers detected (${nonProtected.length} tested). Try "Show all results".`;
+        } else {
+            filterSummary.textContent = `Top ${displayed.length} most suspicious ingredients (of ${nonProtected.length} tested, ${highConf.length} high-confidence)`;
+        }
+
+        displayed.forEach((ing) => {
+            const row = document.createElement("tr");
+            if (ing.ingredient === _detectionGroundTruth) {
+                row.className = "ground-truth-row";
+            }
+
+            const orClass = ing.adjustedOR >= 2.0 ? "or-high" : "or-neutral";
             const confClass = ing.confidence === "HIGH" ? "confidence-high"
                 : ing.confidence === "MEDIUM" ? "confidence-medium" : "confidence-low";
 
-            const namePrefix = ing.ingredient === groundTruthTrigger ? "&#127919; " : "";
+            const namePrefix = ing.ingredient === _detectionGroundTruth ? "&#127919; " : "";
+
+            const orDisplay = ing.adjustedOR.toFixed(2);
+            const orNote = (ing.adjustedOR < ing.final_OR - 0.01)
+                ? ` <span class="or-original" title="Original OR before co-occurrence adjustment">(raw ${ing.final_OR.toFixed(2)})</span>`
+                : "";
 
             row.innerHTML = `
                 <td>${namePrefix}${ing.ingredient}</td>
-                <td><span class="or-value ${orClass}">${ing.final_OR.toFixed(2)}</span></td>
+                <td><span class="or-value ${orClass}">${orDisplay}</span>${orNote}</td>
                 <td><span class="confidence-badge ${confClass}">${ing.confidence}</span></td>
                 <td>${ing.U}</td>
                 <td>${ing.V}</td>
@@ -600,14 +791,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         symptoms.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-        symptoms.forEach((symptom) => {
+        symptoms.forEach((symptom, index) => {
             const card = document.createElement("div");
             card.className = "symptom-card";
             card.innerHTML = `
                 <div class="symptom-timestamp">${formatTimestamp(symptom.timestamp)}</div>
                 <div class="symptom-id">
                     <span class="symptom-icon">&#9888;&#65039;</span>
-                    Symptom #${symptom.symptom_id}
+                    Symptom #${index}
                 </div>
             `;
             list.appendChild(card);

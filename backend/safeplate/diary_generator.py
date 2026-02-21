@@ -1,22 +1,31 @@
 """Synthetic diary generator for SafePlate test lab.
 
-Generates synthetic meal and symptom logs with known ground truth triggers
-for validating the trigger detection pipeline.
+Generates synthetic meal and symptom logs with known ground truth triggers.
+By default, uses actual recipes from the Food.com dataset for realistic
+meal patterns. Falls back to random ingredient sampling if recipe dataset
+is unavailable or trigger is too rare.
 
 The generator uses an exposure-driven causal model:
 - Meals containing true triggers have elevated probability of causing symptoms
 - Baseline symptoms occur at a lower rate independent of trigger exposure
-- Negative control ingredients are included for false positive validation
+- Recipe-based meals maintain realistic ingredient co-occurrence patterns
 """
 
+import ast
 import json
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+
+# Minimum number of recipes containing the trigger before we accept
+# real-recipe mode. Below this threshold the pool is too small for
+# meaningful random sampling, so we fall back to random mode.
+_MIN_TRIGGER_RECIPES = 20
 
 
 @dataclass
@@ -36,6 +45,8 @@ class DiaryGeneratorConfig:
         baseline_symptom_rate: P(symptom | no trigger), range [0, 1].
         hazard_window_hours: Time range after meal where symptom can occur.
         min_lag_hours: Minimum delay before symptom can occur after meal.
+        use_real_recipes: If True, sample actual recipes from the dataset.
+        recipe_dataset_path: Path to cleaned recipes CSV.
     """
 
     n_days: int = 30
@@ -50,6 +61,8 @@ class DiaryGeneratorConfig:
     baseline_symptom_rate: float = 0.05
     hazard_window_hours: int = 6
     min_lag_hours: int = 1
+    use_real_recipes: bool = True
+    recipe_dataset_path: str = "data/processed/recipes_cleaned.csv"
 
     def __post_init__(self) -> None:
         """Validate configuration parameters."""
@@ -80,6 +93,10 @@ class DiaryGenerator:
     the SafePlate trigger detection pipeline. The generated data follows
     an exposure-driven causal model where meals containing specified
     trigger ingredients have an elevated probability of causing symptoms.
+
+    By default, meals are sampled from real Food.com recipes. If the
+    recipe dataset is unavailable or the trigger appears in too few
+    recipes, the generator falls back to random ingredient sampling.
 
     Example:
         >>> config = DiaryGeneratorConfig(
@@ -115,12 +132,83 @@ class DiaryGenerator:
         self._symptoms: list[dict] = []
         self._generation_timestamp: Optional[datetime] = None
 
-        # Ensure ingredient pool has enough variety
-        if len(config.ingredient_pool) < config.ingredients_per_meal_max:
-            raise ValueError(
-                f"ingredient_pool ({len(config.ingredient_pool)}) must have "
-                f"at least ingredients_per_meal_max ({config.ingredients_per_meal_max}) items"
-            )
+        # Recipe pools: list of (name, ingredients) tuples
+        self._recipes_with_trigger: list[tuple[str, list[str]]] = []
+        self._recipes_without_trigger: list[tuple[str, list[str]]] = []
+        self._using_real_recipes: bool = False
+
+        # Try to load real recipes if requested
+        if config.use_real_recipes:
+            self._try_load_recipes()
+
+        # Validate ingredient pool only when using random mode
+        if not self._using_real_recipes:
+            if len(config.ingredient_pool) < config.ingredients_per_meal_max:
+                raise ValueError(
+                    f"ingredient_pool ({len(config.ingredient_pool)}) must have "
+                    f"at least ingredients_per_meal_max ({config.ingredients_per_meal_max}) items"
+                )
+
+    def _try_load_recipes(self) -> None:
+        """Attempt to load and split recipes into trigger/non-trigger pools."""
+        path = Path(self._config.recipe_dataset_path)
+
+        # Also try resolving relative to project root
+        if not path.exists():
+            project_root = Path(__file__).resolve().parent.parent.parent
+            path = project_root / self._config.recipe_dataset_path
+
+        if not path.exists():
+            print(f"  Recipe dataset not found at {self._config.recipe_dataset_path}. "
+                  f"Using random ingredient mode.")
+            return
+
+        try:
+            df = pd.read_csv(path, usecols=["name", "ingredients"])
+        except Exception as e:
+            print(f"  Error loading recipes: {e}. Using random ingredient mode.")
+            return
+
+        # Parse ingredient lists from string representation
+        trigger_set = set(self._config.true_triggers)
+        recipes_with: list[tuple[str, list[str]]] = []
+        recipes_without: list[tuple[str, list[str]]] = []
+
+        for _, row in df.iterrows():
+            try:
+                ingredients = ast.literal_eval(row["ingredients"])
+            except (ValueError, SyntaxError):
+                continue
+
+            if not isinstance(ingredients, list) or len(ingredients) < 2:
+                continue
+
+            name = str(row["name"]) if pd.notna(row["name"]) else ""
+
+            if any(t in ingredients for t in trigger_set):
+                recipes_with.append((name, ingredients))
+            else:
+                recipes_without.append((name, ingredients))
+
+        # Validate pool sizes
+        if len(recipes_with) < _MIN_TRIGGER_RECIPES:
+            triggers_str = ", ".join(self._config.true_triggers)
+            print(f"  Warning: Trigger '{triggers_str}' found in only "
+                  f"{len(recipes_with)} recipes. Need at least {_MIN_TRIGGER_RECIPES}. "
+                  f"Falling back to random ingredient mode.")
+            return
+
+        if not recipes_without:
+            print("  Error: No recipes without trigger found. "
+                  "Falling back to random ingredient mode.")
+            return
+
+        self._recipes_with_trigger = recipes_with
+        self._recipes_without_trigger = recipes_without
+        self._using_real_recipes = True
+        print(f"  Using real recipes from {self._config.recipe_dataset_path}")
+        print(f"  Loaded {len(recipes_with):,} recipes with trigger, "
+              f"{len(recipes_without):,} recipes without trigger")
 
     def generate_meals(self) -> list[dict]:
         """Generate synthetic meal records.
@@ -147,18 +235,19 @@ class DiaryGenerator:
                 minutes = self._rng.integers(0, 24 * 60)
                 timestamp = base_date + timedelta(days=day, minutes=int(minutes))
 
-                # Sample number of ingredients
+                # Sample number of ingredients (used only in random mode)
                 n_ingredients = self._rng.integers(
                     self._config.ingredients_per_meal_min,
                     self._config.ingredients_per_meal_max + 1,
                 )
 
-                ingredients = self._sample_meal_ingredients(n_ingredients)
+                recipe_name, ingredients = self._sample_meal_ingredients(n_ingredients)
 
                 self._meals.append({
                     "timestamp": timestamp,
                     "meal_id": meal_id,
                     "ingredients": ingredients,
+                    "recipe_name": recipe_name,
                 })
                 meal_id += 1
 
@@ -166,15 +255,40 @@ class DiaryGenerator:
         self._meals.sort(key=lambda m: m["timestamp"])
         return self._meals
 
-    def _sample_meal_ingredients(self, n_ingredients: int) -> list[str]:
+    def _sample_meal_ingredients(self, n_ingredients: int) -> tuple[str | None, list[str]]:
         """Sample ingredients for a single meal.
 
+        In real-recipe mode, selects an actual recipe from the appropriate
+        pool (trigger or non-trigger) based on the trigger exposure rate.
+        In random mode, samples individual ingredients from the pool.
+
         Args:
-            n_ingredients: Number of ingredients to sample.
+            n_ingredients: Number of ingredients to sample (random mode only).
 
         Returns:
-            List of ingredient names (no duplicates).
+            Tuple of (recipe_name_or_None, ingredient_list).
         """
+        if self._using_real_recipes:
+            return self._sample_from_recipes()
+        return None, self._sample_random_ingredients(n_ingredients)
+
+    def _sample_from_recipes(self) -> tuple[str, list[str]]:
+        """Sample a real recipe from the appropriate pool."""
+        should_have_trigger = (
+            self._rng.random() < self._config.trigger_exposure_rate
+        )
+
+        if should_have_trigger and self._recipes_with_trigger:
+            idx = self._rng.integers(0, len(self._recipes_with_trigger))
+            name, ings = self._recipes_with_trigger[idx]
+            return name, list(ings)
+        else:
+            idx = self._rng.integers(0, len(self._recipes_without_trigger))
+            name, ings = self._recipes_without_trigger[idx]
+            return name, list(ings)
+
+    def _sample_random_ingredients(self, n_ingredients: int) -> list[str]:
+        """Sample random ingredients (original fallback logic)."""
         ingredients: set[str] = set()
 
         # Pool of non-trigger, non-control ingredients
@@ -329,7 +443,7 @@ class DiaryGenerator:
             if set(meal["ingredients"]) & trigger_set:
                 trigger_exposure_count += 1
 
-        return {
+        metadata = {
             "true_triggers": list(self._config.true_triggers),
             "negative_control": self._config.negative_control,
             "scenario_params": {
@@ -360,7 +474,15 @@ class DiaryGenerator:
                     else 0.0
                 ),
             },
+            "using_real_recipes": self._using_real_recipes,
         }
+
+        if self._using_real_recipes:
+            metadata["n_recipes_with_trigger"] = len(self._recipes_with_trigger)
+            metadata["n_recipes_without_trigger"] = len(self._recipes_without_trigger)
+            metadata["recipe_dataset_path"] = self._config.recipe_dataset_path
+
+        return metadata
 
     @property
     def meals(self) -> list[dict]:
