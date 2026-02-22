@@ -696,7 +696,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // --- Recommendations ---
     const getSubstitutesBtn = document.getElementById("get-substitutes-btn");
-    const ingredientSearchDropdown = document.getElementById("ingredient-search-dropdown");
+    const recIngredientSearch = document.getElementById("rec-ingredient-search");
+    const recDropdownList = document.getElementById("rec-dropdown-list");
+    let recIngredients = [];
+    let selectedRecIngredient = "";
 
     async function loadRecommendationInterface() {
         try {
@@ -741,20 +744,86 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const res = await fetch("/get_diary_ingredients");
             const data = await res.json();
-
             if (data.status === "success") {
-                ingredientSearchDropdown.innerHTML = '<option value="">Select an ingredient...</option>';
-                data.ingredients.forEach((ing) => {
-                    const opt = document.createElement("option");
-                    opt.value = ing;
-                    opt.textContent = ing;
-                    ingredientSearchDropdown.appendChild(opt);
-                });
+                recIngredients = data.ingredients;
             }
         } catch (err) {
             console.error("Failed to load ingredients:", err);
         }
     }
+
+    function filterRecIngredients(searchText) {
+        if (!searchText) return recIngredients;
+        const lower = searchText.toLowerCase();
+        return recIngredients.filter(ing => ing.includes(lower));
+    }
+
+    function renderRecDropdownItems(items) {
+        recDropdownList.innerHTML = "";
+        if (items.length === 0) {
+            const noMatch = document.createElement("div");
+            noMatch.className = "trigger-dropdown-item no-match";
+            noMatch.textContent = "No ingredients found";
+            recDropdownList.appendChild(noMatch);
+        } else {
+            items.forEach(ing => {
+                const item = document.createElement("div");
+                item.className = "trigger-dropdown-item";
+                if (ing === selectedRecIngredient) item.classList.add("selected");
+                item.textContent = ing;
+                item.addEventListener("mousedown", (e) => {
+                    e.preventDefault();
+                    selectedRecIngredient = ing;
+                    recIngredientSearch.value = ing;
+                    recDropdownList.classList.remove("visible");
+                });
+                recDropdownList.appendChild(item);
+            });
+        }
+    }
+
+    recIngredientSearch.addEventListener("input", () => {
+        const items = filterRecIngredients(recIngredientSearch.value);
+        renderRecDropdownItems(items);
+        recDropdownList.classList.add("visible");
+        selectedRecIngredient = "";
+    });
+
+    recIngredientSearch.addEventListener("focus", () => {
+        const items = filterRecIngredients(recIngredientSearch.value);
+        renderRecDropdownItems(items);
+        recDropdownList.classList.add("visible");
+    });
+
+    recIngredientSearch.addEventListener("blur", () => {
+        setTimeout(() => recDropdownList.classList.remove("visible"), 150);
+    });
+
+    recIngredientSearch.addEventListener("keydown", (e) => {
+        const items = recDropdownList.querySelectorAll(".trigger-dropdown-item:not(.no-match)");
+        const current = recDropdownList.querySelector(".trigger-dropdown-item.highlighted");
+        let idx = Array.from(items).indexOf(current);
+
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (current) current.classList.remove("highlighted");
+            idx = Math.min(idx + 1, items.length - 1);
+            if (items[idx]) { items[idx].classList.add("highlighted"); items[idx].scrollIntoView({ block: "nearest" }); }
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (current) current.classList.remove("highlighted");
+            idx = Math.max(idx - 1, 0);
+            if (items[idx]) { items[idx].classList.add("highlighted"); items[idx].scrollIntoView({ block: "nearest" }); }
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            const target = current || items[0];
+            if (target) {
+                selectedRecIngredient = target.textContent;
+                recIngredientSearch.value = target.textContent;
+                recDropdownList.classList.remove("visible");
+            }
+        }
+    });
 
     async function getRecommendationsFor(ingredient) {
         const resultsEl = document.getElementById("recommendations-results");
@@ -882,7 +951,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     getSubstitutesBtn.addEventListener("click", () => {
-        const ingredient = ingredientSearchDropdown.value;
+        const ingredient = selectedRecIngredient || recIngredientSearch.value.trim();
         if (!ingredient) {
             alert("Please select an ingredient first.");
             return;

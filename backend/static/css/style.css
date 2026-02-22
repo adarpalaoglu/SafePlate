@@ -874,23 +874,11 @@ input[type="range"]::-moz-range-thumb {
 .search-controls {
     display: flex;
     gap: 12px;
-    align-items: center;
+    align-items: flex-start;
 }
 
-.ingredient-dropdown {
+.search-controls .searchable-dropdown {
     flex: 1;
-    padding: 10px 12px;
-    border: 1px solid #D1D5DB;
-    border-radius: 6px;
-    font-size: 15px;
-    color: var(--text);
-    background: var(--bg);
-}
-
-.ingredient-dropdown:focus {
-    outline: none;
-    border-color: var(--sage);
-    box-shadow: 0 0 0 3px rgba(124, 152, 133, 0.1);
 }
 
 /* === Recommendations Results === */

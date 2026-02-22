@@ -337,9 +337,12 @@
                     <div class="search-section">
                         <h3>Or search any ingredient:</h3>
                         <div class="search-controls">
-                            <select id="ingredient-search-dropdown" class="ingredient-dropdown">
-                                <option value="">Select an ingredient...</option>
-                            </select>
+                            <div class="searchable-dropdown" id="rec-dropdown-container">
+                                <input type="text" id="rec-ingredient-search" class="trigger-search-input"
+                                       placeholder="Search ingredients... (e.g., chicken, tomato, cheese)"
+                                       autocomplete="off">
+                                <div id="rec-dropdown-list" class="trigger-dropdown-list"></div>
+                            </div>
                             <button id="get-substitutes-btn" class="btn-primary">Get Substitutes</button>
                         </div>
                     </div>
