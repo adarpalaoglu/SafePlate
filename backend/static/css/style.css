@@ -717,6 +717,148 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 600;
 }
 
+/* === Parameter Tooltips === */
+.param-group {
+    position: relative;
+}
+
+.param-group .info-icon {
+    display: inline-block;
+    cursor: help;
+    color: var(--sage);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-weight: 400;
+    font-size: 15px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.param-group .info-icon:hover {
+    color: var(--sage-dark);
+}
+
+.tooltip-content {
+    display: none;
+    margin-top: 6px;
+    margin-bottom: 8px;
+    background: #FAFCFB;
+    border: 1px solid var(--light-gray);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.tooltip-content.visible {
+    display: block;
+}
+
+.tooltip-content strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.tooltip-content ul {
+    margin: 6px 0;
+    padding-left: 20px;
+}
+
+.tooltip-content li {
+    margin-bottom: 3px;
+}
+
+.tooltip-content p {
+    margin: 4px 0;
+    color: var(--text);
+}
+
+.tooltip-content em {
+    color: var(--terracotta);
+    font-style: italic;
+}
+
+/* === Preset Section === */
+.preset-section {
+    margin-bottom: 20px;
+    padding: 16px;
+    background: #F0F4F1;
+    border-radius: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.preset-section label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.preset-dropdown {
+    padding: 8px 12px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+    min-width: 280px;
+}
+
+.preset-dropdown:focus {
+    outline: none;
+    border-color: var(--sage);
+    box-shadow: 0 0 0 3px rgba(124, 152, 133, 0.1);
+}
+
+.preset-help-text {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 13px;
+    color: #9CA3AF;
+    line-height: 1.4;
+}
+
+.preset-description {
+    display: none;
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--text-light);
+    background: rgba(124, 152, 133, 0.06);
+    border-left: 3px solid var(--sage);
+    border-radius: 4px;
+    line-height: 1.5;
+}
+
+.preset-description.visible {
+    display: block;
+}
+
+/* === Preset Detection Info (Tab 3) === */
+.preset-detection-info {
+    padding: 10px 16px;
+    background: #EFF6FF;
+    border-left: 3px solid #3B82F6;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #4B5563;
+    line-height: 1.5;
+}
+
+.preset-detection-info strong {
+    color: #1F2937;
+    font-weight: 600;
+}
+
 /* === Search Section === */
 .search-section {
     margin-bottom: 32px;

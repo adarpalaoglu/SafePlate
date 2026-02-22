@@ -29,24 +29,83 @@
                 <div class="config-section">
                     <h3>Key Parameters</h3>
 
+                    <div class="preset-section">
+                        <label for="preset-selector">Quick Start:</label>
+                        <select id="preset-selector" class="preset-dropdown">
+                            <option value="">-- Select Preset Scenario --</option>
+                            <option value="balanced">Balanced Testing (Recommended)</option>
+                            <option value="easy">Easy Detection Scenario</option>
+                            <option value="difficult">Difficult Detection Scenario</option>
+                            <option value="custom">Custom Parameters</option>
+                        </select>
+                        <span class="preset-help-text">Choose a preset to auto-configure parameters, or select Custom to adjust manually.</span>
+                        <div id="preset-description" class="preset-description"></div>
+                    </div>
+
                     <div class="param-group">
-                        <label for="n_days">Days to Generate: <span id="n_days_val">30</span></label>
+                        <label for="n_days">Days to Generate: <span id="n_days_val">30</span>
+                            <span class="info-icon" data-tooltip="days-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="n_days" min="7" max="90" value="30" step="1">
+                        <div id="days-tooltip" class="tooltip-content">
+                            <strong>Number of diary days to simulate</strong>
+                            <p>Longer diaries provide more data for detection:</p>
+                            <ul>
+                                <li><b>Short (7-30):</b> Quick tests, less reliable</li>
+                                <li><b>Medium (30-60):</b> Good balance</li>
+                                <li><b>Long (60-90):</b> Maximum statistical power</li>
+                            </ul>
+                            <p><b>Recommended:</b> 60 days for reliable detection</p>
+                        </div>
                     </div>
 
                     <div class="param-group">
-                        <label for="trigger_effect">Trigger Effect Strength: <span id="trigger_effect_val">50%</span></label>
+                        <label for="trigger_effect">Trigger Effect Strength: <span id="trigger_effect_val">50%</span>
+                            <span class="info-icon" data-tooltip="trigger-effect-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="trigger_effect" min="0" max="100" value="50" step="5">
+                        <div id="trigger-effect-tooltip" class="tooltip-content">
+                            <strong>Probability that the trigger causes symptoms</strong>
+                            <ul>
+                                <li><b>Low (20-40%):</b> Weak trigger &mdash; simulates mild intolerance</li>
+                                <li><b>Medium (50-70%):</b> Realistic trigger &mdash; simulates typical food sensitivity</li>
+                                <li><b>High (80-95%):</b> Strong trigger &mdash; simulates severe allergy (but may increase confounding)</li>
+                            </ul>
+                            <p><b>Recommended:</b> 70% for balanced detection</p>
+                            <p><em>Counterintuitive: 95% often performs WORSE than 70% with real recipes due to confounding saturation.</em></p>
+                        </div>
                     </div>
 
                     <div class="param-group">
-                        <label for="baseline_rate">Baseline Symptom Rate: <span id="baseline_rate_val">5%</span></label>
+                        <label for="baseline_rate">Baseline Symptom Rate: <span id="baseline_rate_val">5%</span>
+                            <span class="info-icon" data-tooltip="baseline-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="baseline_rate" min="0" max="20" value="5" step="1">
+                        <div id="baseline-tooltip" class="tooltip-content">
+                            <strong>Probability of symptoms without trigger (noise)</strong>
+                            <ul>
+                                <li><b>Very Low (1-3%):</b> Clean signal, easy detection</li>
+                                <li><b>Low (4-6%):</b> Realistic, good detection</li>
+                                <li><b>High (8-12%):</b> Noisy, harder to detect triggers</li>
+                            </ul>
+                            <p><b>Recommended:</b> 4-5% for realistic testing</p>
+                        </div>
                     </div>
 
                     <div class="param-group">
-                        <label for="trigger_exposure">Trigger Exposure Rate: <span id="trigger_exposure_val">30%</span></label>
+                        <label for="trigger_exposure">Trigger Exposure Rate: <span id="trigger_exposure_val">30%</span>
+                            <span class="info-icon" data-tooltip="exposure-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="trigger_exposure" min="0" max="100" value="30" step="5">
+                        <div id="exposure-tooltip" class="tooltip-content">
+                            <strong>Percentage of meals containing the trigger</strong>
+                            <ul>
+                                <li><b>Rare (10-20%):</b> Limited data, may not detect</li>
+                                <li><b>Moderate (25-40%):</b> Balanced observations</li>
+                                <li><b>Frequent (40-60%):</b> Many observations, strong signal</li>
+                            </ul>
+                            <p><b>Recommended:</b> 30-35% for sufficient data</p>
+                        </div>
                     </div>
                 </div>
 
@@ -54,13 +113,32 @@
                     <summary>Advanced Parameters</summary>
 
                     <div class="param-group">
-                        <label for="meals_per_day">Meals Per Day (mean): <span id="meals_per_day_val">3.0</span></label>
+                        <label for="meals_per_day">Meals Per Day (mean): <span id="meals_per_day_val">3.0</span>
+                            <span class="info-icon" data-tooltip="meals-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="meals_per_day" min="1" max="6" value="3" step="0.5">
+                        <div id="meals-tooltip" class="tooltip-content">
+                            <strong>Average number of meals per day</strong>
+                            <p>Uses Poisson distribution for realistic variation.</p>
+                            <ul>
+                                <li><b>2.0:</b> Two meals/day</li>
+                                <li><b>3.0:</b> Three meals/day (standard)</li>
+                                <li><b>4.0+:</b> Three meals + snacks</li>
+                            </ul>
+                            <p><b>Recommended:</b> 3.0</p>
+                        </div>
                     </div>
 
                     <div class="param-group">
-                        <label for="ingredients_min">Min Ingredients Per Meal: <span id="ingredients_min_val">3</span></label>
+                        <label for="ingredients_min">Min Ingredients Per Meal: <span id="ingredients_min_val">3</span>
+                            <span class="info-icon" data-tooltip="ing-range-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="ingredients_min" min="2" max="8" value="3" step="1">
+                        <div id="ing-range-tooltip" class="tooltip-content">
+                            <strong>Ingredient count range per meal</strong>
+                            <p>Controls meal complexity (fallback parameter when using real recipes).</p>
+                            <p><b>Recommended:</b> Min 3, Max 8 for typical meals</p>
+                        </div>
                     </div>
 
                     <div class="param-group">
@@ -69,13 +147,34 @@
                     </div>
 
                     <div class="param-group">
-                        <label for="hazard_window">Hazard Window (hours): <span id="hazard_window_val">6</span></label>
+                        <label for="hazard_window">Hazard Window (hours): <span id="hazard_window_val">6</span>
+                            <span class="info-icon" data-tooltip="hazard-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="hazard_window" min="2" max="24" value="6" step="1">
+                        <div id="hazard-tooltip" class="tooltip-content">
+                            <strong>Hours after meal when symptoms can occur</strong>
+                            <ul>
+                                <li><b>Short (2-4h):</b> Immediate reactions only</li>
+                                <li><b>Medium (4-8h):</b> Typical food reactions</li>
+                                <li><b>Long (8-12h):</b> Delayed reactions</li>
+                            </ul>
+                            <p><b>Recommended:</b> 6 hours</p>
+                        </div>
                     </div>
 
                     <div class="param-group">
-                        <label for="min_lag">Minimum Lag (hours): <span id="min_lag_val">1</span></label>
+                        <label for="min_lag">Minimum Lag (hours): <span id="min_lag_val">1</span>
+                            <span class="info-icon" data-tooltip="lag-tooltip">&#9432;</span>
+                        </label>
                         <input type="range" id="min_lag" min="0" max="6" value="1" step="1">
+                        <div id="lag-tooltip" class="tooltip-content">
+                            <strong>Earliest time symptoms can appear after meal</strong>
+                            <ul>
+                                <li><b>0-1h:</b> Immediate reactions possible</li>
+                                <li><b>1-2h:</b> Typical digestive delay</li>
+                            </ul>
+                            <p><b>Recommended:</b> 1 hour. Must be less than Hazard Window.</p>
+                        </div>
                     </div>
                 </details>
 
@@ -180,6 +279,8 @@
                             </div>
                         </div>
                     </div>
+
+                    <div id="preset-detection-info" class="preset-detection-info" style="display: none;"></div>
 
                     <div class="results-table-container">
                         <h3>Ingredient Analysis Results</h3>

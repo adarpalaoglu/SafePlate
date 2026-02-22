@@ -116,6 +116,101 @@ document.addEventListener("DOMContentLoaded", () => {
 
     loadAllIngredients();
 
+    // --- Parameter Tooltips ---
+    // Icons live inside <label for="..."> elements. Clicking a label
+    // generates a SECOND click on the associated input, which bubbles
+    // to the document handler and would immediately close the tooltip.
+    // preventDefault() stops that second synthetic click.
+    document.querySelectorAll(".info-icon[data-tooltip]").forEach((icon) => {
+        icon.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const tooltipId = icon.getAttribute("data-tooltip");
+            const tooltip = document.getElementById(tooltipId);
+            if (!tooltip) return;
+
+            // Close all other tooltips
+            document.querySelectorAll(".tooltip-content.visible").forEach((t) => {
+                if (t !== tooltip) t.classList.remove("visible");
+            });
+
+            tooltip.classList.toggle("visible");
+        });
+    });
+
+    // Keep tooltip open when clicking inside it
+    document.querySelectorAll(".tooltip-content").forEach((tip) => {
+        tip.addEventListener("click", (e) => {
+            e.stopPropagation();
+        });
+    });
+
+    // Close tooltips when clicking outside
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest(".info-icon[data-tooltip]") && !e.target.closest(".tooltip-content")) {
+            document.querySelectorAll(".tooltip-content.visible").forEach((t) => {
+                t.classList.remove("visible");
+            });
+        }
+    });
+
+    // --- Preset Scenarios ---
+    const PRESET_SCENARIOS = {
+        easy: {
+            label: "Easy Detection Scenario",
+            description: "Maximum signal with minimal noise. Shows top 3 candidates only \u2014 ground truth should be clearly #1. Use to validate system works correctly.",
+            top_n_display: 3,
+            n_days: 90, trigger_effect: 70, baseline_rate: 1,
+            trigger_exposure: 50, meals_per_day: 3, ingredients_min: 3,
+            ingredients_max: 8, hazard_window: 6, min_lag: 1,
+        },
+        balanced: {
+            label: "Balanced Testing (Recommended)",
+            description: "Realistic parameters for general testing. Shows top 8 candidates \u2014 ground truth typically in the top 3. Good for most experiments.",
+            top_n_display: 8,
+            n_days: 60, trigger_effect: 70, baseline_rate: 4,
+            trigger_exposure: 35, meals_per_day: 3, ingredients_min: 3,
+            ingredients_max: 8, hazard_window: 6, min_lag: 1,
+        },
+        difficult: {
+            label: "Difficult Detection Scenario",
+            description: "Weak trigger with high noise. Shows top 12 candidates \u2014 ground truth may be low ranked or not detected. Demonstrates system limits and realistic constraints.",
+            top_n_display: 12,
+            n_days: 45, trigger_effect: 40, baseline_rate: 8,
+            trigger_exposure: 25, meals_per_day: 3, ingredients_min: 3,
+            ingredients_max: 8, hazard_window: 6, min_lag: 1,
+        },
+    };
+
+    let currentPresetTopN = 10;
+    let currentPresetName = "";
+
+    const presetSelector = document.getElementById("preset-selector");
+    const presetDescriptionEl = document.getElementById("preset-description");
+
+    presetSelector.addEventListener("change", () => {
+        const preset = PRESET_SCENARIOS[presetSelector.value];
+        if (!preset) {
+            presetDescriptionEl.textContent = "";
+            presetDescriptionEl.classList.remove("visible");
+            currentPresetTopN = 10;
+            currentPresetName = "";
+            return;
+        }
+
+        Object.entries(preset).forEach(([key, val]) => {
+            if (sliders[key]) {
+                sliders[key].el.value = val;
+                sliders[key].display.textContent = val + sliders[key].suffix;
+            }
+        });
+
+        currentPresetTopN = preset.top_n_display;
+        currentPresetName = preset.label;
+        presetDescriptionEl.textContent = preset.description;
+        presetDescriptionEl.classList.add("visible");
+    });
+
     // --- Tab switching ---
     const tabButtons = document.querySelectorAll(".tab-btn");
     const tabPanes = document.querySelectorAll(".tab-pane");
@@ -297,10 +392,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 sliders[key].display.textContent = val + sliders[key].suffix;
             });
 
-            // Reset trigger selection
+            // Reset trigger selection and preset
             selectedTriggerIngredient = "cheddar cheese";
             triggerSelectedName.textContent = "cheddar cheese";
             triggerSearch.value = "";
+            presetSelector.value = "";
+            currentPresetTopN = 10;
+            currentPresetName = "";
+            presetDescriptionEl.textContent = "";
+            presetDescriptionEl.classList.remove("visible");
 
             // Clear global state
             lastRecommendations = null;
@@ -532,7 +632,8 @@ document.addEventListener("DOMContentLoaded", () => {
             return scoreB - scoreA;
         });
 
-        // Adaptive Top-N: show HIGH confidence, OR >= 1.5, U+V >= 5, capped at 10
+        // Adaptive Top-N: show HIGH confidence, OR >= 1.5, U+V >= 5, capped by preset
+        const topN = currentPresetTopN || 10;
         let displayed;
         if (showAll) {
             displayed = withAdjusted;
@@ -540,7 +641,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const candidates = withAdjusted.filter((i) =>
                 i.confidence === "HIGH" && i.adjustedOR >= 1.5 && (i.U + i.V) >= 5
             );
-            displayed = candidates.slice(0, 10);
+            displayed = candidates.slice(0, topN);
         }
 
         // Count high-confidence items for summary stat
@@ -554,6 +655,15 @@ document.addEventListener("DOMContentLoaded", () => {
             filterSummary.textContent = `No high-confidence triggers detected (${nonProtected.length} tested). Try "Show all results".`;
         } else {
             filterSummary.textContent = `Top ${displayed.length} most suspicious ingredients (of ${nonProtected.length} tested, ${highConf.length} high-confidence)`;
+        }
+
+        // Show preset info if a preset was used
+        const presetInfoEl = document.getElementById("preset-detection-info");
+        if (currentPresetName && !showAll) {
+            presetInfoEl.innerHTML = `Using <strong>${currentPresetName}</strong> preset: showing top ${topN} candidates.`;
+            presetInfoEl.style.display = "";
+        } else {
+            presetInfoEl.style.display = "none";
         }
 
         displayed.forEach((ing) => {
