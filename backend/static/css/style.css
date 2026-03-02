@@ -112,6 +112,15 @@ header h1 {
     color: var(--text-light);
 }
 
+.tab-intro {
+    margin-top: -12px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    color: var(--text-light);
+    line-height: 1.6;
+    max-width: 680px;
+}
+
 /* === Config Sections === */
 .config-section {
     margin-bottom: 24px;
@@ -462,6 +471,12 @@ input[type="range"]::-moz-range-thumb {
 
 .detection-table tbody tr:hover {
     background: #F9FAFB;
+}
+
+.detection-table .rank-col {
+    width: 40px;
+    text-align: center;
+    color: var(--text-light);
 }
 
 .confidence-badge {
@@ -840,23 +855,6 @@ input[type="range"]::-moz-range-thumb {
 
 .preset-description.visible {
     display: block;
-}
-
-/* === Preset Detection Info (Tab 3) === */
-.preset-detection-info {
-    padding: 10px 16px;
-    background: #EFF6FF;
-    border-left: 3px solid #3B82F6;
-    border-radius: 6px;
-    margin-bottom: 16px;
-    font-size: 13px;
-    color: #4B5563;
-    line-height: 1.5;
-}
-
-.preset-detection-info strong {
-    color: #1F2937;
-    font-weight: 600;
 }
 
 /* === Search Section === */

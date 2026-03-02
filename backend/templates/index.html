@@ -17,14 +17,14 @@
             <button class="tab-btn active" data-tab="tab1">Configure Scenario</button>
             <button class="tab-btn" data-tab="tab2" disabled>View Diary</button>
             <button class="tab-btn" data-tab="tab3" disabled>Run Detection</button>
-            <button class="tab-btn" data-tab="tab4" disabled>Test Recommendations</button>
-            <button class="tab-btn" data-tab="tab5" disabled>Set Preferences</button>
+            <button class="tab-btn" data-tab="tab4" disabled>Find Safe Substitutes</button>
+            <button class="tab-btn" data-tab="tab5" disabled>Rank Your Preferences</button>
         </nav>
 
         <div class="tab-content">
             <!-- TAB 1: Configure Scenario -->
             <div id="tab1" class="tab-pane active">
-                <h2>Configure Synthetic Diary</h2>
+                <h2>Create Test Scenario</h2>
 
                 <div class="config-section">
                     <h3>Key Parameters</h3>
@@ -60,7 +60,7 @@
                     </div>
 
                     <div class="param-group">
-                        <label for="trigger_effect">Trigger Effect Strength: <span id="trigger_effect_val">50%</span>
+                        <label for="trigger_effect">How Often the Trigger Causes Symptoms: <span id="trigger_effect_val">50%</span>
                             <span class="info-icon" data-tooltip="trigger-effect-tooltip">&#9432;</span>
                         </label>
                         <input type="range" id="trigger_effect" min="0" max="100" value="50" step="5">
@@ -72,12 +72,11 @@
                                 <li><b>High (80-95%):</b> Strong trigger &mdash; simulates severe allergy (but may increase confounding)</li>
                             </ul>
                             <p><b>Recommended:</b> 70% for balanced detection</p>
-                            <p><em>Counterintuitive: 95% often performs WORSE than 70% with real recipes due to confounding saturation.</em></p>
                         </div>
                     </div>
 
                     <div class="param-group">
-                        <label for="baseline_rate">Baseline Symptom Rate: <span id="baseline_rate_val">5%</span>
+                        <label for="baseline_rate">Background Symptom Frequency: <span id="baseline_rate_val">5%</span>
                             <span class="info-icon" data-tooltip="baseline-tooltip">&#9432;</span>
                         </label>
                         <input type="range" id="baseline_rate" min="0" max="20" value="5" step="1">
@@ -93,7 +92,7 @@
                     </div>
 
                     <div class="param-group">
-                        <label for="trigger_exposure">Trigger Exposure Rate: <span id="trigger_exposure_val">30%</span>
+                        <label for="trigger_exposure">How Often the Trigger Appears in Meals: <span id="trigger_exposure_val">30%</span>
                             <span class="info-icon" data-tooltip="exposure-tooltip">&#9432;</span>
                         </label>
                         <input type="range" id="trigger_exposure" min="0" max="100" value="30" step="5">
@@ -147,7 +146,7 @@
                     </div>
 
                     <div class="param-group">
-                        <label for="hazard_window">Hazard Window (hours): <span id="hazard_window_val">6</span>
+                        <label for="hazard_window">How Long After a Meal to Watch for Symptoms (hours): <span id="hazard_window_val">6</span>
                             <span class="info-icon" data-tooltip="hazard-tooltip">&#9432;</span>
                         </label>
                         <input type="range" id="hazard_window" min="2" max="24" value="6" step="1">
@@ -163,7 +162,7 @@
                     </div>
 
                     <div class="param-group">
-                        <label for="min_lag">Minimum Lag (hours): <span id="min_lag_val">1</span>
+                        <label for="min_lag">How Soon After Eating Symptoms Can Appear (hours): <span id="min_lag_val">1</span>
                             <span class="info-icon" data-tooltip="lag-tooltip">&#9432;</span>
                         </label>
                         <input type="range" id="min_lag" min="0" max="6" value="1" step="1">
@@ -173,7 +172,7 @@
                                 <li><b>0-1h:</b> Immediate reactions possible</li>
                                 <li><b>1-2h:</b> Typical digestive delay</li>
                             </ul>
-                            <p><b>Recommended:</b> 1 hour. Must be less than Hazard Window.</p>
+                            <p><b>Recommended:</b> 1 hour. Must be less than How Long After a Meal to Watch for Symptoms.</p>
                         </div>
                     </div>
                 </details>
@@ -181,7 +180,7 @@
                 <div class="config-section trigger-config">
                     <h3>Trigger Configuration</h3>
                     <div class="param-group">
-                        <label>Ground Truth Trigger Ingredient:</label>
+                        <label>Hidden Trigger Ingredient:</label>
                         <div class="searchable-dropdown" id="trigger-dropdown-container">
                             <input type="text" id="trigger-search" class="trigger-search-input"
                                    placeholder="Search ingredients... (e.g., chicken, tomato, cheese)"
@@ -253,7 +252,7 @@
 
                 <div id="detection-results" style="display: none;">
                     <div class="ground-truth-card">
-                        <h3>Ground Truth (Known Trigger)</h3>
+                        <h3>Hidden Trigger Ingredient</h3>
                         <p>The synthetic diary was generated with <strong id="ground-truth-trigger">-</strong> as the trigger ingredient.</p>
                         <p class="help-text">This allows you to validate whether the detection algorithm correctly identifies the known trigger.</p>
                     </div>
@@ -280,8 +279,6 @@
                         </div>
                     </div>
 
-                    <div id="preset-detection-info" class="preset-detection-info" style="display: none;"></div>
-
                     <div class="results-table-container">
                         <h3>Ingredient Analysis Results</h3>
                         <p class="help-text" style="margin-bottom: 8px;">
@@ -297,6 +294,7 @@
                         <table class="detection-table">
                             <thead>
                                 <tr>
+                                    <th class="rank-col">#</th>
                                     <th>Ingredient</th>
                                     <th>Odds Ratio</th>
                                     <th>Confidence</th>
@@ -313,7 +311,7 @@
             </div>
 
             <div id="tab4" class="tab-pane">
-                <h2>Test Recommendations</h2>
+                <h2>Find Safe Substitutes</h2>
 
                 <div id="recommendations-empty-state" class="empty-state">
                     <p>Run trigger detection first to test recommendations.</p>
@@ -374,7 +372,9 @@
             </div>
 
             <div id="tab5" class="tab-pane">
-                <h2>Set Preferences</h2>
+                <h2>Rank Your Preferences</h2>
+
+                <p class="tab-intro">Rank these ingredients in order of your personal preference, with 1 being your most preferred. Once saved, your ranking will be remembered and applied whenever the same ingredient comes up in the Recommendations tab, reordering the results to reflect what you actually want to eat.</p>
 
                 <div id="pref-empty-state" class="empty-state">
                     <p>Get recommendations in Tab 4 first, then return here to set your preferences.</p>

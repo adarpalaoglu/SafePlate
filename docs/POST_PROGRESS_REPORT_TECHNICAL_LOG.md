@@ -777,6 +777,8 @@ If fewer than 10 ingredients pass pre-filtering, all qualifying ingredients are 
 
 **Rationale:** Adaptive Top-N adapts to varying data distributions, always producing a meaningful and manageable results list. It is analogous to "top-K retrieval" in information retrieval systems, where the user cares about the ranking of results, not whether they exceed an arbitrary absolute threshold.
 
+**Update (March 2026):** An early version of this system varied the Top-N cap per preset: Easy Detection capped at 3 candidates, Balanced Testing at 8, and Difficult Detection at 12. The intent was to align the displayed result count with the expected detectability of each scenario. In practice this created an inconsistency: custom parameter configurations always used a fixed cap of 10, so two users running identical parameters saw different result counts depending on whether they had selected a preset. The per-preset variation was removed. The cap is now fixed at 10 across all configurations, including preset-selected runs. See Section 9.20.
+
 ### 9.7 Co-occurrence Penalty for Recipe Confounding
 
 **Problem:** Ingredients that frequently co-occur with the trigger in real recipes receive inflated odds ratios even though they are not causal. For example, if cheddar cheese appears primarily in Mexican recipes, cilantro (which also appears in those recipes) will have a high co-occurrence ratio with cheese and will incorrectly show elevated OR.
@@ -1042,6 +1044,20 @@ Several iterative improvements were made to the interface during testing:
 - **Duplicate rank handling.** Users can enter duplicate rank numbers. The system accepts this by sorting and including both; a future enhancement could validate uniqueness client-side.
 - **Co-occurrence penalty is client-side.** The penalty computation runs in JavaScript, requiring meal data to be fetched by the frontend. A future refactoring could move this to the backend for consistency.
 
+### 9.20 UI Refinements (March 2026)
+
+Five targeted changes were made to the interface following further evaluation.
+
+**Preset contextual explanations.** The Quick Start dropdown in Tab 1 now displays a short explanatory paragraph immediately below the dropdown when a preset is selected. The text is hidden when no preset is selected and shown on selection change. The explanation for each preset grounds itself in the specific parameter choices rather than simply labelling the scenario: Easy Detection explains that the high exposure rate and strong effect give the algorithm abundant evidence to produce a clear statistical signal; Balanced Testing notes that the moderate exposure and middling effect leave room for some ambiguity, so a small number of other ingredients may be flagged alongside the true trigger; Difficult Detection explains that the low exposure rate and weak effect produce a thin statistical signal that the algorithm may struggle to rank highly. The Custom option displays its own message noting that results depend entirely on the user's configuration. Implementation: the `PRESET_SCENARIOS` object in `main.js` was extended with a `description` field for all four entries (including a new `custom` entry, which previously had no corresponding object); the `presetSelector` change handler populates and shows the `#preset-description` element, hiding it when the blank placeholder is selected. The `.preset-description` and `.preset-description.visible` CSS classes were already present from an earlier iteration and required no changes. Slider auto-fill behaviour is unaffected.
+
+**Per-preset Top-N variation removed.** As described in the Section 9.6 update, the `top_n_display` fields (Easy=3, Balanced=8, Difficult=12) were removed from all preset entries in `PRESET_SCENARIOS`. The `currentPresetTopN` and `currentPresetName` module-level variables were removed entirely. The `preset-detection-info` element in Tab 3 — which displayed a blue banner reading "Using Balanced Testing preset: showing top 8 candidates" — was removed from the HTML and from the `renderDetectionTable()` rendering function. The expression `const topN = currentPresetTopN || 10` was replaced by `const topN = 10`. The `.preset-detection-info` CSS block was also removed. The "Reset All" handler's references to `currentPresetTopN` and `currentPresetName` were removed accordingly.
+
+**Trigger Effect Strength tooltip update.** The tooltip for the Trigger Effect Strength slider previously contained the note "Counterintuitive: 95% often performs WORSE than 70% with real recipes due to confounding saturation." This finding is documented in full in Section 11.1. The note was removed from the tooltip because the tooltip is a quick-reference aid, not the appropriate location for a nuanced statistical claim requiring its own explanation. Including it at tooltip level risked being read out of context or dismissed as a curiosity rather than a substantiated finding. The remainder of the tooltip — the three-level description of effect strength bands and the 70% recommendation — is unchanged.
+
+**Auto-reset on diary generation.** Previously, generating a new diary while detection results or recommendations from a prior run remained in memory could leave stale data visible in downstream tabs until the user manually pressed "Reset All". The generate button handler now calls an internal `performSilentReset()` function before proceeding with generation. The function: (1) awaits `fetch("/session/clear")` to clear all server-side diary and detection state, wrapping the fetch in a try/catch so that a network error does not abort generation; (2) disables tabs 2–5 so stale content is inaccessible during generation; and (3) clears the five global JS state variables (`lastRecommendations`, `lastQueryIngredient`, `_allDetectionIngredients`, `_detectionGroundTruth`, `_detectionSummary`). The reset fires after the trigger-validation early-return check so that a missing-trigger error does not trigger an unnecessary session clear. No confirmation prompt is shown — the reset is entirely silent. The "Reset All" button is unchanged; it additionally resets sliders, the trigger selection, the preset dropdown, the status message, and tab focus, and continues to show a confirmation dialog before proceeding.
+
+**Rank numbers added to detection results table.** A `#` column was added as the first column of the ingredient analysis table in Tab 3. Rows are numbered sequentially from 1 in the order determined by the evidence-weighted composite score (Section 9.6). The column is narrow (40px fixed width), centre-aligned, and uses the muted text colour (`var(--text-light)`) to keep it visually unobtrusive. Rank numbers update correctly when the "Show all tested ingredients" toggle is changed, because `renderDetectionTable()` performs a full re-render on each toggle event and the row index is derived from the `forEach` callback index parameter. Implementation: `<th class="rank-col">#</th>` added as the first header cell; `displayed.forEach((ing, idx) =>` updated with the index parameter; `<td class="rank-col">${idx + 1}</td>` added as the first cell in the row template; `.detection-table .rank-col` CSS rule added. No other columns or table behaviour were affected.
+
 ---
 
 ## 10. Phase 3: Production Code Refactoring
@@ -1240,6 +1256,7 @@ Detection (precision-focused) and safety warnings (recall-focused) should not sh
 - **Phase 2 Refinement:** February 12–18, 2026 (real recipe integration, shrinkage removal, adaptive Top-N filtering, co-occurrence penalty, multi-layer filtering, UI polish).
 - **Phase 3 Production Refactoring:** February 2026 (notebook-to-script conversion, caching, dependency cleanup).
 - **Phase 4 Parameter Optimization:** February 2026 (systematic testing, performance characterization, effect strength paradox discovery).
+- **Phase 5 UI Refinements:** March 2026 (preset contextual explanations; per-preset Top-N variation removed from Tab 3; Trigger Effect Strength tooltip trimmed; auto-reset on diary generation; rank column added to detection results table).
 
 ---
 
@@ -1340,8 +1357,10 @@ PIPELINE_CONFIG = PipelineConfig(
 **Key design decisions:**
 - Raw ORs > shrinkage for real recipe data (Section 9.5)
 - Adaptive Top-N > fixed thresholds (Section 9.6)
+- Per-preset Top-N variation removed; uniform cap of 10 across all configurations (Section 9.6 update, Section 9.20)
 - Co-occurrence penalty for recipe confounding (Section 9.7)
 - Groups used for safety warnings, not detection (Section 9.5)
 - 70% effect strength > 95% (Section 11.1)
+- Generate Diary silently resets all state before generation (Section 9.20)
 
 **Known limitation:** Same-group warnings depend on trigger passing strict pipeline thresholds (Section 9.10).

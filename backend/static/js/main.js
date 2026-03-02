@@ -158,32 +158,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const PRESET_SCENARIOS = {
         easy: {
             label: "Easy Detection Scenario",
-            description: "Maximum signal with minimal noise. Shows top 3 candidates only \u2014 ground truth should be clearly #1. Use to validate system works correctly.",
-            top_n_display: 3,
+            description: "The trigger exposure rate is set high and the effect strength is strong, meaning the trigger ingredient appears in many meals and consistently precedes symptoms. This gives the algorithm abundant evidence to work with, producing a clear statistical signal that separates the trigger from other ingredients.",
             n_days: 90, trigger_effect: 70, baseline_rate: 1,
             trigger_exposure: 50, meals_per_day: 3, ingredients_min: 3,
             ingredients_max: 8, hazard_window: 6, min_lag: 1,
         },
         balanced: {
             label: "Balanced Testing (Recommended)",
-            description: "Realistic parameters for general testing. Shows top 8 candidates \u2014 ground truth typically in the top 3. Good for most experiments.",
-            top_n_display: 8,
+            description: "The trigger exposure rate is moderate and the effect strength is set to a middling level, meaning the trigger appears in a realistic proportion of meals with an effect that is noticeable but not overwhelming. This leaves room for some ambiguity in the data, so the algorithm may flag a small number of other ingredients alongside the true trigger.",
             n_days: 60, trigger_effect: 70, baseline_rate: 4,
             trigger_exposure: 35, meals_per_day: 3, ingredients_min: 3,
             ingredients_max: 8, hazard_window: 6, min_lag: 1,
         },
         difficult: {
             label: "Difficult Detection Scenario",
-            description: "Weak trigger with high noise. Shows top 12 candidates \u2014 ground truth may be low ranked or not detected. Demonstrates system limits and realistic constraints.",
-            top_n_display: 12,
+            description: "The trigger exposure rate is low and the effect strength is weak, meaning the trigger appears rarely and its link to symptoms is faint relative to background noise. The statistical signal is thin, so the algorithm has limited evidence to distinguish the true trigger from coincidental co-occurrences.",
             n_days: 45, trigger_effect: 40, baseline_rate: 8,
             trigger_exposure: 25, meals_per_day: 3, ingredients_min: 3,
             ingredients_max: 8, hazard_window: 6, min_lag: 1,
         },
+        custom: {
+            label: "Custom Parameters",
+            description: "You are setting all parameters manually. Results will depend entirely on your chosen configuration.",
+        },
     };
-
-    let currentPresetTopN = 10;
-    let currentPresetName = "";
 
     const presetSelector = document.getElementById("preset-selector");
     const presetDescriptionEl = document.getElementById("preset-description");
@@ -193,8 +191,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!preset) {
             presetDescriptionEl.textContent = "";
             presetDescriptionEl.classList.remove("visible");
-            currentPresetTopN = 10;
-            currentPresetName = "";
             return;
         }
 
@@ -205,8 +201,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        currentPresetTopN = preset.top_n_display;
-        currentPresetName = preset.label;
         presetDescriptionEl.textContent = preset.description;
         presetDescriptionEl.classList.add("visible");
     });
@@ -296,6 +290,30 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // --- Silent reset (used before diary generation) ---
+    async function performSilentReset() {
+        try {
+            await fetch("/session/clear");
+        } catch (err) {
+            console.error("Session clear failed:", err);
+        }
+
+        // Disable tabs 2–5 so stale content is inaccessible
+        tabButtons.forEach((btn) => {
+            if (btn.dataset.tab !== "tab1") {
+                btn.disabled = true;
+                btn.classList.remove("active");
+            }
+        });
+
+        // Clear global state
+        lastRecommendations = null;
+        lastQueryIngredient = null;
+        _allDetectionIngredients = null;
+        _detectionGroundTruth = null;
+        _detectionSummary = null;
+    }
+
     // --- Generate Diary ---
     const generateBtn = document.getElementById("generate-btn");
     const statusEl = document.getElementById("generation-status");
@@ -307,6 +325,8 @@ document.addEventListener("DOMContentLoaded", () => {
             statusEl.textContent = "Please select a trigger ingredient before generating the diary.";
             return;
         }
+
+        await performSilentReset();
 
         generateBtn.disabled = true;
         statusEl.className = "status-message";
@@ -397,8 +417,6 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerSelectedName.textContent = "cheddar cheese";
             triggerSearch.value = "";
             presetSelector.value = "";
-            currentPresetTopN = 10;
-            currentPresetName = "";
             presetDescriptionEl.textContent = "";
             presetDescriptionEl.classList.remove("visible");
 
@@ -632,8 +650,8 @@ document.addEventListener("DOMContentLoaded", () => {
             return scoreB - scoreA;
         });
 
-        // Adaptive Top-N: show HIGH confidence, OR >= 1.5, U+V >= 5, capped by preset
-        const topN = currentPresetTopN || 10;
+        // Filter: show HIGH confidence, OR >= 1.5, U+V >= 5, cap at top 10
+        const topN = 10;
         let displayed;
         if (showAll) {
             displayed = withAdjusted;
@@ -657,16 +675,7 @@ document.addEventListener("DOMContentLoaded", () => {
             filterSummary.textContent = `Top ${displayed.length} most suspicious ingredients (of ${nonProtected.length} tested, ${highConf.length} high-confidence)`;
         }
 
-        // Show preset info if a preset was used
-        const presetInfoEl = document.getElementById("preset-detection-info");
-        if (currentPresetName && !showAll) {
-            presetInfoEl.innerHTML = `Using <strong>${currentPresetName}</strong> preset: showing top ${topN} candidates.`;
-            presetInfoEl.style.display = "";
-        } else {
-            presetInfoEl.style.display = "none";
-        }
-
-        displayed.forEach((ing) => {
+        displayed.forEach((ing, idx) => {
             const row = document.createElement("tr");
             if (ing.ingredient === _detectionGroundTruth) {
                 row.className = "ground-truth-row";
@@ -684,6 +693,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 : "";
 
             row.innerHTML = `
+                <td class="rank-col">${idx + 1}</td>
                 <td>${namePrefix}${ing.ingredient}</td>
                 <td><span class="or-value ${orClass}">${orDisplay}</span>${orNote}</td>
                 <td><span class="confidence-badge ${confClass}">${ing.confidence}</span></td>
