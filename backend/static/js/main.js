@@ -1200,7 +1200,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (tourDone) return;
                 tourDone = true;
                 if (_obs) { _obs.disconnect(); _obs = null; }
-                localStorage.setItem("safeplate_tour_completed", "1");
+                localStorage.setItem("safeplate_run_id", SAFEPLATE_RUN_ID);
                 tourFullReset();
             }
 
@@ -1418,12 +1418,11 @@ document.addEventListener("DOMContentLoaded", () => {
             return tour;
         }
 
-        if (!localStorage.getItem("safeplate_tour_completed")) {
+        if (localStorage.getItem("safeplate_run_id") !== SAFEPLATE_RUN_ID) {
             setTimeout(createAndStartTour, 600);
         }
 
         document.getElementById("tour-help-btn").addEventListener("click", () => {
-            localStorage.removeItem("safeplate_tour_completed");
             createAndStartTour();
         });
     }

@@ -2,6 +2,7 @@
 
 import math
 import re
+import uuid
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
@@ -18,6 +19,10 @@ from safeplate.group_aware_trigger_detector import (
 )
 
 app = Flask(__name__)
+
+# Unique ID generated once per server run. Used by the frontend to detect
+# whether the server has been restarted and re-show the guided tour.
+SERVER_RUN_ID = uuid.uuid4().hex
 
 # Fallback ingredient pool for random-mode diary generation
 INGREDIENT_POOL = [
@@ -71,7 +76,7 @@ _last_shrinkage_result = None
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", server_run_id=SERVER_RUN_ID)
 
 
 @app.route("/get_ingredient_pool")
