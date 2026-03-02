@@ -1058,6 +1058,69 @@ Five targeted changes were made to the interface following further evaluation.
 
 **Rank numbers added to detection results table.** A `#` column was added as the first column of the ingredient analysis table in Tab 3. Rows are numbered sequentially from 1 in the order determined by the evidence-weighted composite score (Section 9.6). The column is narrow (40px fixed width), centre-aligned, and uses the muted text colour (`var(--text-light)`) to keep it visually unobtrusive. Rank numbers update correctly when the "Show all tested ingredients" toggle is changed, because `renderDetectionTable()` performs a full re-render on each toggle event and the row index is derived from the `forEach` callback index parameter. Implementation: `<th class="rank-col">#</th>` added as the first header cell; `displayed.forEach((ing, idx) =>` updated with the index parameter; `<td class="rank-col">${idx + 1}</td>` added as the first cell in the row template; `.detection-table .rank-col` CSS rule added. No other columns or table behaviour were affected.
 
+### 9.21 UI Label Humanization, Tab 5 Explanatory Text, and Shepherd.js Guided Tour (March 2026)
+
+Four further changes were made in a second round of March 2026 UI work.
+
+**UI label renaming.** Several labels across all five tabs were replaced with plain-English equivalents to remove jargon and make the interface more approachable for non-technical users. Changes were confined entirely to `backend/templates/index.html`; no JavaScript logic or backend routes were affected.
+
+| Old label | New label |
+|-----------|-----------|
+| Configure Synthetic Diary (Tab 1 h2) | Create Test Scenario |
+| Trigger Effect Strength (slider) | How Often the Trigger Causes Symptoms |
+| Baseline Symptom Rate (slider) | Background Symptom Frequency |
+| Trigger Exposure Rate (slider) | How Often the Trigger Appears in Meals |
+| Hazard Window (slider) | How Long After a Meal to Watch for Symptoms |
+| Minimum Lag (slider) | How Soon After Eating Symptoms Can Appear |
+| Ground Truth Trigger Ingredient (label) | Hidden Trigger Ingredient |
+| Ground Truth (Known Trigger) (Tab 3 h3) | Hidden Trigger Ingredient |
+| Test Recommendations (tab nav) | Find Safe Substitutes |
+| Set Preferences (tab nav) | Rank Your Preferences |
+
+The tooltip for `min_lag` was updated to reference the new label for the hazard window slider rather than the old name. No tooltip content was otherwise changed.
+
+**Tab 5 explanatory paragraph.** A brief introductory paragraph was added at the top of the Rank Your Preferences tab, immediately below the heading and above the empty-state message. The paragraph explains in plain terms how the ranking system works: the user assigns numbers from 1 upward with 1 being most preferred, and saved rankings are remembered across sessions and applied whenever the same ingredient appears in the Substitutes tab, reordering results to reflect personal preference. CSS class `.tab-intro` was added to `style.css` (muted text colour, 14px, max-width 680px, with negative top margin to close the gap between the heading and the first content element).
+
+**Shepherd.js guided tour.** A 13-step contextual walkthrough was added to guide new users through the full SafePlate workflow on first load. The tour is implemented in `main.js` as an `initTour()` function called at the end of the `DOMContentLoaded` closure. The tour auto-starts after a 600 ms delay on first load and can be relaunched at any time via a persistent help button fixed to the bottom-right of the viewport.
+
+*Library choice.* Shepherd.js v11.2.0 was selected over the current v14.x because v14 only ships ESM/CJS builds, which are incompatible with a plain `<script>` tag. Version 11.2.0 provides a UMD build (`shepherd.min.js`) loadable directly via a CDN `<script>` tag with no bundler required. Both the CSS and JS files are loaded from cdnjs.cloudflare.com.
+
+*Tour structure (13 steps):*
+
+| Step | ID | Element | Purpose |
+|------|----|---------|---------|
+| 1 | welcome | — | Intro modal, no attachment |
+| 2 | preset | `#preset-selector` | Explain preset dropdown |
+| 3 | parameters | `.config-section` | Explain simulation sliders |
+| 4 | trigger | `.trigger-config` | Explain hidden trigger selection |
+| 5 | generate | `#generate-btn` | Prompt user to click Generate; auto-advances on diary load |
+| 6 | diary-summary | `#diary-summary` | Show diary stats overview (Tab 2) |
+| 7 | diary-timeline | `#diary-timeline` | Show day-by-day timeline (Tab 2) |
+| 8 | run-detection | `#run-detection-btn` | Prompt user to click Run Detection; auto-advances on results load (Tab 3) |
+| 9 | detection-results | `.results-table-container` | Show ranked trigger results (Tab 3) |
+| 10 | trigger-shortcuts | `.trigger-shortcuts-section` | Show trigger pills; auto-clicks first pill (Tab 4) |
+| 11 | recommendations | `#recommendations-list` | Show safe substitute list (Tab 4) |
+| 12 | ranking | `#ranking-items-container` | Explain preference ranking (Tab 5) |
+| 13 | complete | — | Closing modal, no attachment |
+
+*Async step advancement.* Steps 5 and 8 require the user to click a button and then wait for an asynchronous response before the tour can continue. Rather than adding fixed timeouts, each step uses a `MutationObserver` on a key DOM attribute: Step 5 observes the `style` attribute of `#diary-summary` and advances once `display !== "none"`; Step 8 observes the `style` attribute of `#detection-results` in the same way. The observer is stored in a local `_obs` reference and disconnected in both the success path and the `when.hide` lifecycle hook to prevent memory leaks if the user skips the tour mid-step.
+
+*Tab switching.* Steps 6, 8, 10, and 12 use `beforeShowPromise` to programmatically click the appropriate tab navigation button before the step tooltip is shown, ensuring the target element is visible and positioned correctly when Shepherd calculates attachment coordinates. Each `beforeShowPromise` wraps the click in a `Promise` with a 300 ms `setTimeout` to allow the tab pane transition to complete before the tooltip renders.
+
+*Preset auto-selection.* Step 5's `beforeShowPromise` checks whether the Balanced preset is already selected; if not, it sets `presetSelector.value = "balanced"` and dispatches a synthetic `change` event. This ensures the generate step always runs with a configuration that will produce a clean, detectable diary, regardless of what the user had previously selected.
+
+*Trigger pill auto-click.* Step 10's `when.show` handler fires a 600 ms delayed click on the first `.trigger-pill` element. This populates the recommendations list before the user advances to Step 11, so the list is visible and populated when the tooltip points to it.
+
+*Tour lifecycle.* The `createAndStartTour()` function is called each time the tour needs to start (first load or help button click), creating a fresh `Shepherd.Tour` instance. Both `cancel` and `complete` events call a shared `endTour()` function, guarded by a `tourDone` boolean to prevent double-execution. `endTour()` disconnects any active `MutationObserver`, sets `safeplate_tour_completed` in `localStorage` to prevent re-auto-starting, and calls `tourFullReset()`.
+
+*Full reset on exit.* `tourFullReset()` is an async function defined inside `initTour()` that mirrors the existing "Reset All" button logic: it calls `/session/clear`, disables tabs 2–5, resets all sliders to their HTML defaults (`n_days=30`, `trigger_effect=50`, `baseline_rate=5`, `trigger_exposure=30`, `meals_per_day=3`, `ingredients_min=3`, `ingredients_max=8`, `hazard_window=6`, `min_lag=1`), restores the trigger selection to "cheddar cheese", clears the preset dropdown and description, and nullifies all five global state variables. This guarantees that after the tour concludes the app is in a clean state for the user to begin their own testing session.
+
+*Help button.* A `<button id="tour-help-btn">` is placed in `index.html` immediately before `</body>`. It is styled in `style.css` as a fixed 48×48 px circular button positioned at `bottom: 24px; right: 24px` with a terracotta background (`var(--terracotta)`, #C9876B), white `?` glyph, and a `scale(1.1)` hover transform. Clicking the button removes the `safeplate_tour_completed` localStorage key and calls `createAndStartTour()`.
+
+*Shepherd.js theme.* The default Shepherd.js card appearance is overridden in `style.css` using `!important` rules to match the SafePlate design system: the step header uses the sage green (`var(--sage)`, #7C9885) background with white title text; body text uses the primary text colour and 14px font size; Next and Finish buttons are sage green; Skip Tour buttons are transparent with a light-grey border. Maximum card width is 360px with 12px border radius.
+
+**Tour text voice and style.** The text for all 13 step titles and descriptions was written in a conversational, non-technical register. Em dashes were avoided throughout. Titles use short, direct phrases ("Go Ahead and Generate", "Here Are the Results", "Make It Personal") and descriptions use second-person present tense and contractions to match how a person would explain the workflow verbally. No technical terms such as "odds ratio" or "MutationObserver" appear in user-facing text.
+
 ---
 
 ## 10. Phase 3: Production Code Refactoring
@@ -1256,7 +1319,8 @@ Detection (precision-focused) and safety warnings (recall-focused) should not sh
 - **Phase 2 Refinement:** February 12–18, 2026 (real recipe integration, shrinkage removal, adaptive Top-N filtering, co-occurrence penalty, multi-layer filtering, UI polish).
 - **Phase 3 Production Refactoring:** February 2026 (notebook-to-script conversion, caching, dependency cleanup).
 - **Phase 4 Parameter Optimization:** February 2026 (systematic testing, performance characterization, effect strength paradox discovery).
-- **Phase 5 UI Refinements:** March 2026 (preset contextual explanations; per-preset Top-N variation removed from Tab 3; Trigger Effect Strength tooltip trimmed; auto-reset on diary generation; rank column added to detection results table).
+- **Phase 5 UI Refinements (round 1):** March 2026 (preset contextual explanations; per-preset Top-N variation removed from Tab 3; Trigger Effect Strength tooltip trimmed; auto-reset on diary generation; rank column added to detection results table).
+- **Phase 5 UI Refinements (round 2):** March 2026 (plain-English label renaming across all five tabs; Tab 5 explanatory paragraph; 13-step Shepherd.js guided tour with help button, MutationObserver async step advancement, auto-start on first load, and full state reset on exit).
 
 ---
 
@@ -1281,12 +1345,12 @@ SafePlate/
 ├── backend/
 │   ├── app.py                                 [~450 lines, Web UI + detection]
 │   ├── templates/
-│   │   └── index.html                         [~305 lines, 5-tab interface]
+│   │   └── index.html                         [~420 lines, 5-tab interface]
 │   ├── static/
 │   │   ├── css/
-│   │   │   └── style.css                      [~700 lines, design system]
+│   │   │   └── style.css                      [~1,000 lines, design system + tour theme]
 │   │   └── js/
-│   │       └── main.js                        [~650 lines, detection + filtering]
+│   │       └── main.js                        [~1,430 lines, detection + filtering + guided tour]
 │   ├── scripts/
 │   │   └── prepare_data.py                    [~90 lines, data pipeline orchestrator]
 │   └── safeplate/
@@ -1362,5 +1426,8 @@ PIPELINE_CONFIG = PipelineConfig(
 - Groups used for safety warnings, not detection (Section 9.5)
 - 70% effect strength > 95% (Section 11.1)
 - Generate Diary silently resets all state before generation (Section 9.20)
+- All UI labels use plain-English equivalents; no jargon in tab nav, slider labels, or section headings (Section 9.21)
+- Shepherd.js v11.2.0 (UMD) chosen over v14.x for plain `<script>` tag compatibility (Section 9.21)
+- Tour resets all app state on exit so users start from a clean slate after the walkthrough (Section 9.21)
 
 **Known limitation:** Same-group warnings depend on trigger passing strict pipeline thresholds (Section 9.10).

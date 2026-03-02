@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SafePlate Test Lab</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shepherd.js/11.2.0/css/shepherd.min.css">
 </head>
 <body>
     <div class="container">
@@ -411,6 +412,8 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shepherd.js/11.2.0/js/shepherd.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <button id="tour-help-btn" aria-label="Relaunch guided tour">?</button>
 </body>
 </html>

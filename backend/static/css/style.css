@@ -1171,6 +1171,116 @@ input[type="range"]::-moz-range-thumb {
     background: #F7FAFC;
 }
 
+/* === Tour Help Button === */
+#tour-help-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--terracotta);
+    color: #fff;
+    font-size: 22px;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s, box-shadow 0.15s;
+    line-height: 1;
+}
+
+#tour-help-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+/* === Shepherd.js Theme Overrides === */
+.shepherd-element {
+    max-width: 360px !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18) !important;
+    border: none !important;
+    z-index: 9999 !important;
+}
+
+.shepherd-has-title .shepherd-content .shepherd-header {
+    background: var(--sage) !important;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 16px 20px 12px !important;
+}
+
+.shepherd-title {
+    color: #fff !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
+}
+
+.shepherd-cancel-icon {
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.shepherd-cancel-icon:hover {
+    color: #fff !important;
+    background: transparent !important;
+}
+
+.shepherd-text {
+    padding: 16px 20px !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    color: var(--text) !important;
+    font-family: inherit !important;
+}
+
+.shepherd-footer {
+    padding: 8px 20px 16px !important;
+    gap: 8px !important;
+}
+
+.shepherd-btn-next {
+    background: var(--sage) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 9px 18px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: background 0.15s !important;
+    font-family: inherit !important;
+}
+
+.shepherd-btn-next:hover {
+    background: #6a8772 !important;
+}
+
+.shepherd-btn-skip {
+    background: transparent !important;
+    color: var(--text-light) !important;
+    border: 1px solid var(--light-gray) !important;
+    border-radius: 8px !important;
+    padding: 9px 18px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: background 0.15s !important;
+    font-family: inherit !important;
+}
+
+.shepherd-btn-skip:hover {
+    background: var(--light-gray) !important;
+}
+
+.shepherd-modal-overlay-container {
+    z-index: 9997 !important;
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .summary-stats {

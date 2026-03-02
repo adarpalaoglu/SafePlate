@@ -1152,4 +1152,281 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("save-ranking-btn").addEventListener("click", saveRanking);
     document.getElementById("clear-ranking-btn").addEventListener("click", clearRanking);
     document.getElementById("back-to-recs-btn").addEventListener("click", backToRecommendations);
+
+    // --- Guided Tour ---
+    function initTour() {
+        if (typeof Shepherd === "undefined") return;
+
+        async function tourFullReset() {
+            try { await fetch("/session/clear"); } catch (e) {}
+            tabButtons.forEach((btn) => {
+                if (btn.dataset.tab !== "tab1") {
+                    btn.disabled = true;
+                    btn.classList.remove("active");
+                }
+            });
+            tabPanes.forEach((p) => p.classList.remove("active"));
+            document.getElementById("tab1").classList.add("active");
+            document.querySelector('[data-tab="tab1"]').classList.add("active");
+            const defaults = {
+                n_days: "30", trigger_effect: "50", baseline_rate: "5",
+                trigger_exposure: "30", meals_per_day: "3", ingredients_min: "3",
+                ingredients_max: "8", hazard_window: "6", min_lag: "1",
+            };
+            Object.entries(defaults).forEach(([key, val]) => {
+                sliders[key].el.value = val;
+                sliders[key].display.textContent = val + sliders[key].suffix;
+            });
+            selectedTriggerIngredient = "cheddar cheese";
+            triggerSelectedName.textContent = "cheddar cheese";
+            triggerSearch.value = "";
+            presetSelector.value = "";
+            presetDescriptionEl.textContent = "";
+            presetDescriptionEl.classList.remove("visible");
+            lastRecommendations = null;
+            lastQueryIngredient = null;
+            _allDetectionIngredients = null;
+            _detectionGroundTruth = null;
+            _detectionSummary = null;
+            statusEl.className = "status-message";
+            statusEl.textContent = "";
+        }
+
+        function createAndStartTour() {
+            let tourDone = false;
+            let _obs = null;
+
+            function endTour() {
+                if (tourDone) return;
+                tourDone = true;
+                if (_obs) { _obs.disconnect(); _obs = null; }
+                localStorage.setItem("safeplate_tour_completed", "1");
+                tourFullReset();
+            }
+
+            const skipBtn = { text: "Skip Tour", action() { tour.cancel(); }, classes: "shepherd-btn-skip" };
+            const nextBtn = { text: "Next →", action() { tour.next(); }, classes: "shepherd-btn-next" };
+
+            const tour = new Shepherd.Tour({
+                useModalOverlay: true,
+                defaultStepOptions: {
+                    classes: "shepherd-safeplate",
+                    scrollTo: { behavior: "smooth", block: "center" },
+                    cancelIcon: { enabled: true },
+                    buttons: [skipBtn, nextBtn],
+                },
+            });
+
+            // Step 1: Welcome
+            tour.addStep({
+                id: "welcome",
+                title: "Welcome to SafePlate Test Lab",
+                text: "SafePlate lets you build a simulated food diary, figure out which ingredient is causing symptoms, and find safe things to eat instead. We'll go through each step together.",
+                buttons: [
+                    skipBtn,
+                    { text: "Get Started →", action() { tour.next(); }, classes: "shepherd-btn-next" },
+                ],
+            });
+
+            // Step 2: Preset selector
+            tour.addStep({
+                id: "preset",
+                title: "Pick a Scenario to Start",
+                text: "Choose a preset and all the parameters will fill in automatically. The <strong>Balanced</strong> option is a great starting point since it gives the algorithm a real chance of finding the trigger without making it too obvious.",
+                attachTo: { element: "#preset-selector", on: "bottom" },
+            });
+
+            // Step 3: Config section (key params)
+            tour.addStep({
+                id: "parameters",
+                title: "What These Sliders Do",
+                text: "Each slider shapes how the diary gets built. You can control things like how many days to simulate, how strongly the trigger affects symptoms, and how often it shows up in meals. The advanced settings are tucked in the section below if you want to dig deeper.",
+                attachTo: { element: ".config-section", on: "right" },
+            });
+
+            // Step 4: Trigger config
+            tour.addStep({
+                id: "trigger",
+                title: "The Hidden Trigger Ingredient",
+                text: "This is the ingredient that gets quietly woven into the diary as the thing causing symptoms. Once you run detection, you can see whether the algorithm manages to find it. That's how you know if it's working.",
+                attachTo: { element: ".trigger-config", on: "top" },
+            });
+
+            // Step 5: Generate (waits for diary via MutationObserver)
+            tour.addStep({
+                id: "generate",
+                title: "Go Ahead and Generate",
+                text: "Hit <strong>Generate Diary</strong> and the diary will be built using the Balanced preset. Just sit tight, the tour will move forward on its own once it's done.",
+                attachTo: { element: "#generate-btn", on: "top" },
+                buttons: [skipBtn],
+                beforeShowPromise() {
+                    if (presetSelector.value !== "balanced") {
+                        presetSelector.value = "balanced";
+                        presetSelector.dispatchEvent(new Event("change"));
+                    }
+                    return Promise.resolve();
+                },
+                when: {
+                    show() {
+                        const diarySummary = document.getElementById("diary-summary");
+                        if (!diarySummary) return;
+                        _obs = new MutationObserver(() => {
+                            if (diarySummary.style.display !== "none") {
+                                if (_obs) { _obs.disconnect(); _obs = null; }
+                                const tab2Btn = document.querySelector('[data-tab="tab2"]');
+                                if (tab2Btn && !tab2Btn.disabled) {
+                                    tab2Btn.click();
+                                    setTimeout(() => tour.next(), 400);
+                                }
+                            }
+                        });
+                        _obs.observe(diarySummary, { attributes: true, attributeFilter: ["style"] });
+                    },
+                    hide() {
+                        if (_obs) { _obs.disconnect(); _obs = null; }
+                    },
+                },
+            });
+
+            // Step 6: Diary summary (Tab 2)
+            tour.addStep({
+                id: "diary-summary",
+                title: "Your Diary at a Glance",
+                text: "Here you can see a quick overview of what was generated: how many meals were logged, how many symptom events came up, and the full date range of the diary.",
+                attachTo: { element: "#diary-summary", on: "bottom" },
+            });
+
+            // Step 7: Diary timeline
+            tour.addStep({
+                id: "diary-timeline",
+                title: "Browsing the Timeline",
+                text: "Scroll through to see individual meals and the symptoms that followed. The trigger ingredient shows up in a lot of these meals, and it's the algorithm's job to figure out which one is the culprit.",
+                attachTo: { element: "#diary-timeline", on: "top" },
+            });
+
+            // Step 8: Run Detection (Tab 3, waits for results via MutationObserver)
+            tour.addStep({
+                id: "run-detection",
+                title: "Run the Detection",
+                text: "Click <strong>Run Detection Analysis</strong> and the algorithm will look through the diary for statistical patterns. The tour will keep going on its own once the results are in.",
+                attachTo: { element: "#run-detection-btn", on: "top" },
+                buttons: [skipBtn],
+                beforeShowPromise() {
+                    return new Promise((resolve) => {
+                        const tab3Btn = document.querySelector('[data-tab="tab3"]');
+                        if (tab3Btn && !tab3Btn.disabled) {
+                            tab3Btn.click();
+                            setTimeout(resolve, 300);
+                        } else {
+                            resolve();
+                        }
+                    });
+                },
+                when: {
+                    show() {
+                        const detResults = document.getElementById("detection-results");
+                        if (!detResults) return;
+                        _obs = new MutationObserver(() => {
+                            if (detResults.style.display !== "none") {
+                                if (_obs) { _obs.disconnect(); _obs = null; }
+                                setTimeout(() => tour.next(), 400);
+                            }
+                        });
+                        _obs.observe(detResults, { attributes: true, attributeFilter: ["style"] });
+                    },
+                    hide() {
+                        if (_obs) { _obs.disconnect(); _obs = null; }
+                    },
+                },
+            });
+
+            // Step 9: Detection results table
+            tour.addStep({
+                id: "detection-results",
+                title: "Here Are the Results",
+                text: "Each ingredient is scored based on how often it shows up near symptoms. The ones at the top are the most likely triggers. Take a look and see if the hidden ingredient made it up there.",
+                attachTo: { element: ".results-table-container", on: "top" },
+            });
+
+            // Step 10: Trigger shortcuts (Tab 4)
+            tour.addStep({
+                id: "trigger-shortcuts",
+                title: "Jump Straight to a Trigger",
+                text: "These buttons are shortcuts to the top detected triggers. Click one and it will automatically pull up safe substitutes for that ingredient.",
+                attachTo: { element: ".trigger-shortcuts-section", on: "bottom" },
+                beforeShowPromise() {
+                    return new Promise((resolve) => {
+                        const tab4Btn = document.querySelector('[data-tab="tab4"]');
+                        if (tab4Btn && !tab4Btn.disabled) {
+                            tab4Btn.click();
+                            setTimeout(resolve, 300);
+                        } else {
+                            resolve();
+                        }
+                    });
+                },
+                when: {
+                    show() {
+                        setTimeout(() => {
+                            const firstPill = document.querySelector(".trigger-pill");
+                            if (firstPill) firstPill.click();
+                        }, 600);
+                    },
+                },
+            });
+
+            // Step 11: Recommendations list
+            tour.addStep({
+                id: "recommendations",
+                title: "Safe Substitutes",
+                text: "These are the ingredients suggested as safer alternatives. They're ranked by how rarely they show up near symptoms in your diary. Anything in the same food group as the trigger gets filtered out automatically.",
+                attachTo: { element: "#recommendations-list", on: "top" },
+            });
+
+            // Step 12: Ranking preferences (Tab 5)
+            tour.addStep({
+                id: "ranking",
+                title: "Make It Personal",
+                text: "Put a number next to the substitutes you actually want. Your rankings are saved and used to reorder the results so your preferred options always come first.",
+                attachTo: { element: "#ranking-items-container", on: "top" },
+                beforeShowPromise() {
+                    return new Promise((resolve) => {
+                        const tab5Btn = document.querySelector('[data-tab="tab5"]');
+                        if (tab5Btn && !tab5Btn.disabled) {
+                            tab5Btn.click();
+                            setTimeout(resolve, 300);
+                        } else {
+                            resolve();
+                        }
+                    });
+                },
+            });
+
+            // Step 13: Done
+            tour.addStep({
+                id: "complete",
+                title: "That's Everything!",
+                text: "You've seen the full SafePlate workflow. Hit <strong>Reset All</strong> whenever you want to start over with your own settings. And the <strong>?</strong> button in the corner will bring this tour back any time.",
+                buttons: [
+                    { text: "Finish", action() { tour.complete(); }, classes: "shepherd-btn-next" },
+                ],
+            });
+
+            tour.on("cancel", endTour);
+            tour.on("complete", endTour);
+            tour.start();
+            return tour;
+        }
+
+        if (!localStorage.getItem("safeplate_tour_completed")) {
+            setTimeout(createAndStartTour, 600);
+        }
+
+        document.getElementById("tour-help-btn").addEventListener("click", () => {
+            localStorage.removeItem("safeplate_tour_completed");
+            createAndStartTour();
+        });
+    }
+
+    initTour();
 });
