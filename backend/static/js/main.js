@@ -620,6 +620,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // Toggle handler for "Show all results" checkbox
     document.getElementById("show-all-results").addEventListener("change", renderDetectionTable);
 
+    function getIngredientSummary(or, U, V) {
+        if (U == null || V == null) return "";
+        if (U === 0 && V === 0) return "This ingredient was not observed enough in your diary to draw any conclusions.";
+        if (or > 2 && U > 5) return `Appeared in ${U} meals before symptoms and only ${V} meals without, making it one of the more suspicious ingredients in your diary.`;
+        if (or > 2) return "Associated with symptoms more often than not, but only observed a small number of times so treat this with some caution.";
+        if (or < 1) return "Appeared more often in symptom-free meals than before symptoms, suggesting it is unlikely to be a trigger.";
+        if (U === V) return "Appeared equally in symptom and symptom-free meals, showing no clear association with your symptoms.";
+        return "Appeared slightly more often before symptoms than without, but the difference is not strong enough to be confident.";
+    }
+
     function renderDetectionTable() {
         if (!_allDetectionIngredients) return;
 
@@ -692,9 +702,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? ` <span class="or-original" title="Original OR before co-occurrence adjustment">(raw ${ing.final_OR.toFixed(2)})</span>`
                 : "";
 
+            const summary = getIngredientSummary(ing.adjustedOR, ing.U, ing.V);
+            const summaryHtml = summary ? `<div class="ing-summary">${summary}</div>` : "";
+
             row.innerHTML = `
                 <td class="rank-col">${idx + 1}</td>
-                <td>${namePrefix}${ing.ingredient}</td>
+                <td>${namePrefix}${ing.ingredient}${summaryHtml}</td>
                 <td><span class="or-value ${orClass}">${orDisplay}</span>${orNote}</td>
                 <td><span class="confidence-badge ${confClass}">${ing.confidence}</span></td>
                 <td>${ing.U}</td>
@@ -1152,6 +1165,48 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("save-ranking-btn").addEventListener("click", saveRanking);
     document.getElementById("clear-ranking-btn").addEventListener("click", clearRanking);
     document.getElementById("back-to-recs-btn").addEventListener("click", backToRecommendations);
+
+    // --- Column Header Tooltips ---
+    (function () {
+        const popup = document.getElementById("col-tooltip-popup");
+        if (!popup) return;
+
+        function positionPopup(icon) {
+            const rect = icon.getBoundingClientRect();
+            const pw = 280;
+            let left = rect.left + rect.width / 2 - pw / 2;
+            left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+            popup.style.left = left + "px";
+            popup.style.top = (rect.bottom + 8) + "px";
+        }
+
+        document.querySelectorAll(".col-info-icon").forEach((icon) => {
+            icon.addEventListener("mouseenter", () => {
+                popup.textContent = icon.dataset.colTooltip;
+                popup.classList.add("visible");
+                positionPopup(icon);
+            });
+            icon.addEventListener("mouseleave", () => {
+                popup.classList.remove("visible");
+            });
+            icon.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const isThisIcon = popup._anchor === icon && popup.classList.contains("visible");
+                popup.classList.remove("visible");
+                if (!isThisIcon) {
+                    popup.textContent = icon.dataset.colTooltip;
+                    popup.classList.add("visible");
+                    positionPopup(icon);
+                    popup._anchor = icon;
+                }
+            });
+        });
+
+        document.addEventListener("click", () => {
+            popup.classList.remove("visible");
+            popup._anchor = null;
+        });
+    }());
 
     // --- Guided Tour ---
     function initTour() {

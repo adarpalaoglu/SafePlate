@@ -283,6 +283,8 @@
                         </div>
                     </div>
 
+                    <p class="tab-intro">Ingredients are ranked by combining two things: how strongly they were associated with your symptoms and how many times they were actually observed. An ingredient that appeared before symptoms many times is more trustworthy than one that only appeared once or twice with a high score by chance. This means the top of the list reflects both strength of evidence and volume of evidence, not just one or the other.</p>
+
                     <div class="results-table-container">
                         <h3>Ingredient Analysis Results</h3>
                         <p class="help-text" style="margin-bottom: 8px;">
@@ -300,10 +302,10 @@
                                 <tr>
                                     <th class="rank-col">#</th>
                                     <th>Ingredient</th>
-                                    <th>Odds Ratio</th>
-                                    <th>Confidence</th>
-                                    <th>U (Case)</th>
-                                    <th>V (Control)</th>
+                                    <th>Odds Ratio <span class="col-info-icon" data-col-tooltip="This number tells you how much more often this ingredient appeared in meals before a symptom compared to meals without a symptom. A score above 1 means it appeared more often before symptoms, which makes it more suspicious. The higher the number, the stronger the association.">i</span></th>
+                                    <th>Confidence <span class="col-info-icon" data-col-tooltip="This reflects how much data we had for this ingredient. HIGH means the ingredient appeared enough times to trust the result. MEDIUM means there is some evidence but not a lot. LOW means the ingredient was rarely seen, so the result should be treated with caution.">i</span></th>
+                                    <th>U (Case) <span class="col-info-icon" data-col-tooltip="This is the number of times this ingredient appeared in a meal that was followed by a symptom within your watch period. A higher number means more symptom-linked observations.">i</span></th>
+                                    <th>V (Control) <span class="col-info-icon" data-col-tooltip="This is the number of times this ingredient appeared in a meal that was NOT followed by a symptom. Comparing U and V is the core of the detection: if U is much larger than V, the ingredient is more suspicious.">i</span></th>
                                 </tr>
                             </thead>
                             <tbody id="detection-table-body"></tbody>
@@ -419,6 +421,7 @@
     <script>const SAFEPLATE_RUN_ID = "{{ server_run_id }}";</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/shepherd.js/11.2.0/js/shepherd.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <div id="col-tooltip-popup" class="col-tooltip-popup"></div>
     <button id="tour-help-btn" aria-label="Relaunch guided tour">?</button>
 </body>
 </html>
