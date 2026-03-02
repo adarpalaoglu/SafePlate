@@ -870,12 +870,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             if (data.status === "success") {
+                // Set before rendering so card text generation can read it
+                lastQueryIngredient = ingredient;
+                lastRecommendations = data.recommendations;
+
                 renderRecommendations(data.recommendations, data.hide_same_group, data.n_same_group_hidden);
                 renderExcludedList(data.excluded_triggers);
 
-                // Store for Tab 5 and enable it
-                lastRecommendations = data.recommendations;
-                lastQueryIngredient = ingredient;
+                // Enable Tab 5
                 document.querySelector('[data-tab="tab5"]').disabled = false;
             } else {
                 listEl.innerHTML = `<p class="error-text">${data.message}</p>`;
@@ -915,13 +917,46 @@ document.addEventListener("DOMContentLoaded", () => {
                 `;
             }
 
-            if (rec.explanation) {
-                html += `
-                    <div class="recommendation-explanation">
-                        ${rec.explanation}
-                    </div>
-                `;
+            // Build plain-English explanation text from structured fields
+            const queryName = lastQueryIngredient || "-";
+            const substituteName = rec.ingredient;
+            const textParts = [];
+
+            // Group warning first
+            if (rec.is_same_group) {
+                textParts.push(`<p class="card-group-warning">Note: This ingredient belongs to the same food group as a detected trigger and may share similar properties, so use your own judgement.</p>`);
             }
+
+            // Similarity label + score + cooking context sentence (all cards)
+            const score = rec.similarity;
+            const simLabel = score >= 0.8 ? "A very similar substitute"
+                : score >= 0.6 ? "A reasonably similar substitute"
+                : "A moderately similar substitute";
+            const scoreStr = (score != null) ? ` (${score.toFixed(3)} out of a maximum of 1.0)` : "";
+            const substituteCapitalised = substituteName.charAt(0).toUpperCase() + substituteName.slice(1);
+            const simSentence = `${simLabel}${scoreStr}. ${substituteCapitalised} tends to appear in many of the same recipes as ${queryName}, which means it works in similar dishes and cooking contexts.`;
+
+            // Safety sentence
+            let safetySentence;
+            if (!rec.is_tested || rec.or_value == null) {
+                safetySentence = `It did not appear in your diary at all, so there is no direct evidence either way regarding your symptoms.`;
+            } else if (rec.or_value < 1.5) {
+                if (rec.confidence === "HIGH" || rec.confidence === "MEDIUM") {
+                    safetySentence = `It showed no meaningful link to your symptoms in the diary, so it is considered a safe alternative to try.`;
+                } else {
+                    safetySentence = `It was not associated with your symptoms, though it did not appear very often in your diary so the evidence is limited.`;
+                }
+            } else {
+                safetySentence = `It appeared marginally more often before symptoms than without, but was not flagged as a trigger. The other options on this list may be safer choices.`;
+            }
+            textParts.push(`<p class="card-safety-text">${simSentence} ${safetySentence}</p>`);
+
+            // Preference note last
+            if (rec.user_rank != null) {
+                textParts.push(`<p class="card-preference-note">This result also reflects your saved preferences for ${queryName} substitutes.</p>`);
+            }
+
+            html += `<div class="recommendation-explanation">${textParts.join("")}</div>`;
 
             card.innerHTML = html;
             container.appendChild(card);

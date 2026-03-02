@@ -353,12 +353,28 @@ def get_recommendations():
                 # Convert markdown **bold** to HTML <strong>
                 explanation_text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', explanation_text)
 
+            # Look up structured OR/confidence data for frontend text generation
+            or_value = None
+            confidence_val = None
+            is_tested = False
+            if _last_shrinkage_result is not None:
+                for r in _last_shrinkage_result.ingredients:
+                    if r.ingredient == rec.ingredient:
+                        or_value = round(float(r.final_OR), 4)
+                        confidence_val = r.confidence
+                        is_tested = True
+                        break
+
             enhanced.append({
                 "ingredient": rec.ingredient,
                 "similarity": float(rec.similarity_score),
                 "is_same_group": is_same_group,
                 "same_group_as_trigger": same_group_trigger,
                 "explanation": explanation_text,
+                "or_value": or_value,
+                "confidence": confidence_val,
+                "is_tested": is_tested,
+                "user_rank": rec.user_rank,
             })
 
             # Stop once we have 10

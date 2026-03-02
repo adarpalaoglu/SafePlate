@@ -1062,6 +1062,29 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 600;
 }
 
+.recommendation-explanation p {
+    margin: 0 0 6px 0;
+}
+
+.recommendation-explanation p:last-child {
+    margin-bottom: 0;
+}
+
+.card-group-warning {
+    color: #92400E;
+    font-style: italic;
+}
+
+.card-safety-text {
+    color: #6B7280;
+}
+
+.card-preference-note {
+    color: var(--text-light);
+    font-style: italic;
+    font-size: 12px;
+}
+
 .recommendation-card.hidden-by-filter {
     display: none;
 }
