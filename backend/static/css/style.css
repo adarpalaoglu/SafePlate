@@ -1383,6 +1383,72 @@ input[type="range"]::-moz-range-thumb {
     z-index: 9997 !important;
 }
 
+/* Welcome step — wider, vertically centred modal */
+.shepherd-element.shepherd-welcome {
+    width: 680px !important;
+    max-width: 680px !important;
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+}
+
+.shepherd-element.shepherd-welcome .shepherd-text {
+    max-height: calc(85vh - 130px) !important;
+    overflow-y: auto !important;
+}
+
+.shepherd-element.shepherd-welcome .shepherd-text p {
+    margin: 0 0 10px 0 !important;
+}
+
+.shepherd-element.shepherd-welcome .shepherd-text p:last-child {
+    margin-bottom: 0 !important;
+}
+
+/* Tour steps grid */
+.tour-steps-heading {
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    color: var(--text) !important;
+    margin: 0 0 8px 0 !important;
+}
+
+.tour-steps-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.tour-step-card {
+    background: #f0f4f1;
+    border-radius: 8px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tour-step-card strong {
+    color: var(--sage-dark);
+    font-size: 13px;
+    font-weight: 600;
+    display: block;
+}
+
+.tour-step-card span {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.tour-step-card-last {
+    grid-column: 1 / -1;
+    width: calc(50% - 5px);
+    justify-self: center;
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .summary-stats {
@@ -1399,5 +1465,21 @@ input[type="range"]::-moz-range-thumb {
 
     .search-controls {
         flex-direction: column;
+    }
+}
+
+@media (max-width: 720px) {
+    .shepherd-element.shepherd-welcome {
+        width: calc(100vw - 32px) !important;
+        max-width: calc(100vw - 32px) !important;
+    }
+
+    .tour-steps-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tour-step-card-last {
+        width: 100%;
+        justify-self: auto;
     }
 }
