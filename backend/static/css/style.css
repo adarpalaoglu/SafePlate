@@ -651,10 +651,10 @@ input[type="range"]::-moz-range-thumb {
 
 /* === Ground Truth Card === */
 .ground-truth-card {
-    background: #FEF3E2;
-    border: 2px solid var(--terracotta);
+    background: var(--bg);
+    border: none;
     border-radius: 8px;
-    padding: 20px;
+    padding: 20px 20px 20px 0;
     margin-bottom: 24px;
 }
 
@@ -662,7 +662,7 @@ input[type="range"]::-moz-range-thumb {
     margin-bottom: 12px;
     color: var(--text);
     font-size: 18px;
-    font-weight: 500;
+    font-weight: 700;
 }
 
 .ground-truth-card p {
@@ -1264,6 +1264,110 @@ input[type="range"]::-moz-range-thumb {
     display: block;
 }
 
+/* === Verdict Banner === */
+.verdict-banner {
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    color: #fff;
+    cursor: default;
+}
+
+
+.verdict-icon-side {
+    flex: 0 0 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.verdict-icon-side svg {
+    width: 52px;
+    height: 52px;
+    stroke: rgba(255, 255, 255, 0.95);
+    stroke-width: 1.75;
+}
+
+.verdict-body {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    word-wrap: break-word;
+}
+
+.verdict-headline {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 5px;
+    line-height: 1.3;
+}
+
+.verdict-detail {
+    font-size: 14px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.88);
+    line-height: 1.55;
+}
+
+.verdict-detail strong {
+    font-weight: 600;
+    color: #fff;
+}
+
+.verdict-success {
+    background: #E8F5E9;
+}
+
+/* Success variant uses a light background — override white text to stay readable */
+.verdict-success .verdict-headline {
+    color: #1b5e2a;
+}
+
+.verdict-success .verdict-detail {
+    color: #2d6b3a;
+}
+
+.verdict-success .verdict-detail strong {
+    color: #1b5e2a;
+}
+
+.verdict-success .verdict-icon-side svg {
+    stroke: #4CAF50;
+}
+
+.verdict-partial {
+    background: #FAF0E8;
+}
+
+/* Partial variant uses a light background — override white text to stay readable */
+.verdict-partial .verdict-headline {
+    color: #7a3510;
+}
+
+.verdict-partial .verdict-detail {
+    color: #8a4520;
+}
+
+.verdict-partial .verdict-detail strong {
+    color: #7a3510;
+}
+
+.verdict-partial .verdict-icon-side svg {
+    stroke: #C9976B;
+}
+
+.verdict-missed {
+    background: #6B7C93;
+}
+
+.verdict-neutral {
+    background: #9AA0A6;
+}
+
 /* === Per-row Ingredient Summary === */
 .ing-summary {
     font-size: 12px;
@@ -1481,5 +1585,18 @@ input[type="range"]::-moz-range-thumb {
     .tour-step-card-last {
         width: 100%;
         justify-self: auto;
+    }
+}
+
+@media (max-width: 600px) {
+    .verdict-banner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 18px 20px;
+    }
+
+    .verdict-icon-side {
+        flex: none;
     }
 }

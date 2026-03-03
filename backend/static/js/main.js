@@ -316,6 +316,10 @@ document.addEventListener("DOMContentLoaded", () => {
         // Hide diary narrative panel so stale text is not visible during regeneration
         const narrativePanel = document.getElementById("diary-narrative");
         if (narrativePanel) narrativePanel.style.display = "none";
+
+        // Hide verdict banner
+        const verdictBanner = document.getElementById("verdict-banner");
+        if (verdictBanner) verdictBanner.style.display = "none";
     }
 
     // --- Generate Diary ---
@@ -456,6 +460,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("diary-narrative-text").innerHTML = "";
             }
 
+            // Hide verdict banner
+            const verdictBanner = document.getElementById("verdict-banner");
+            if (verdictBanner) verdictBanner.style.display = "none";
+
             // Clear status
             statusEl.className = "status-message";
             statusEl.textContent = "";
@@ -592,6 +600,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.status === "no_data") {
                 document.getElementById("detection-empty-state").style.display = "";
                 document.getElementById("detection-results").style.display = "none";
+                document.getElementById("verdict-banner").style.display = "none";
                 return;
             }
 
@@ -622,6 +631,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             renderDetectionTable();
+            renderVerdictBanner();
         } catch (err) {
             console.error("Failed to load detection results:", err);
         }
@@ -747,6 +757,70 @@ document.addEventListener("DOMContentLoaded", () => {
             `;
             tbody.appendChild(row);
         });
+    }
+
+    function renderVerdictBanner() {
+        const banner = document.getElementById("verdict-banner");
+        if (!banner || !_allDetectionIngredients || !_detectionGroundTruth) return;
+
+        const triggerName = _detectionGroundTruth;
+        const confMultiplier = { HIGH: 1.0, MEDIUM: 0.5, LOW: 0.1 };
+        const cooc = _cooccurrenceRatios || {};
+
+        // Replicate the same sort used in renderDetectionTable to get accurate rank
+        const nonProtected = _allDetectionIngredients.filter((i) => !i.protected);
+        const withAdjusted = nonProtected.map((ing) => {
+            const ratio = cooc[ing.ingredient] || 0;
+            let adjustedOR = ing.final_OR;
+            if (ratio > 0.8 && ing.ingredient !== triggerName) {
+                adjustedOR = ing.final_OR * (1 - ratio);
+            }
+            return { ...ing, adjustedOR };
+        });
+        withAdjusted.sort((a, b) => {
+            const scoreA = a.adjustedOR * (confMultiplier[a.confidence] || 0.1) * Math.log(a.U + 1);
+            const scoreB = b.adjustedOR * (confMultiplier[b.confidence] || 0.1) * Math.log(b.U + 1);
+            return scoreB - scoreA;
+        });
+
+        const total = withAdjusted.length;
+        const rankIdx = withAdjusted.findIndex((i) => i.ingredient === triggerName);
+
+        const svgCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>`;
+        const svgWarn  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+        const svgX     = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+        const svgQ     = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+
+        let variantClass, icon, headline, detail;
+
+        if (rankIdx === -1) {
+            variantClass = "verdict-neutral";
+            icon = svgQ;
+            headline = "Trigger Not Tested";
+            detail = `The hidden trigger <strong>${triggerName}</strong> did not appear enough times in the diary to be analysed. Consider increasing the trigger exposure rate and regenerating the diary.`;
+        } else {
+            const rank = rankIdx + 1;
+            if (rank === 1) {
+                variantClass = "verdict-success";
+                icon = svgCheck;
+                headline = "Trigger Correctly Identified";
+                detail = `The system identified the hidden trigger correctly. <strong>${triggerName}</strong> was ranked #1 out of ${total} ingredients analysed, placing it at the very top of the suspicious ingredients list.`;
+            } else if (rank <= 5) {
+                variantClass = "verdict-partial";
+                icon = svgWarn;
+                headline = "Trigger Found but Not Ranked First";
+                detail = `The system found the hidden trigger but did not rank it first. <strong>${triggerName}</strong> was ranked #${rank} out of ${total} ingredients analysed. The true trigger was identified but other ingredients were considered more suspicious.`;
+            } else {
+                variantClass = "verdict-missed";
+                icon = svgX;
+                headline = "Trigger Not Identified";
+                detail = `The system struggled to identify the hidden trigger. <strong>${triggerName}</strong> was ranked #${rank} out of ${total} ingredients analysed. This may reflect the difficulty level of your scenario parameters, particularly if the trigger appeared rarely or had a weak effect on symptoms.`;
+            }
+        }
+
+        banner.className = `verdict-banner ${variantClass}`;
+        banner.innerHTML = `<div class="verdict-icon-side">${icon}</div><div class="verdict-body"><div class="verdict-headline">${headline}</div><div class="verdict-detail">${detail}</div></div>`;
+        banner.style.display = "";
     }
 
     // --- Recommendations ---
