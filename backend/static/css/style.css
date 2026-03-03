@@ -278,6 +278,27 @@ input[type="range"]::-moz-range-thumb {
     border-radius: 8px;
 }
 
+/* === Diary Narrative Panel === */
+.diary-narrative-panel {
+    background: rgba(124, 152, 133, 0.07);
+    border-left: 3px solid var(--sage);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text);
+}
+
+.diary-narrative-panel p {
+    margin: 0;
+    color: var(--text);
+}
+
+.diary-narrative-panel strong {
+    color: var(--sage-dark);
+}
+
 /* === Summary Card === */
 .summary-card {
     background: #F0F4F1;

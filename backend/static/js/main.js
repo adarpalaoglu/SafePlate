@@ -312,6 +312,10 @@ document.addEventListener("DOMContentLoaded", () => {
         _allDetectionIngredients = null;
         _detectionGroundTruth = null;
         _detectionSummary = null;
+
+        // Hide diary narrative panel so stale text is not visible during regeneration
+        const narrativePanel = document.getElementById("diary-narrative");
+        if (narrativePanel) narrativePanel.style.display = "none";
     }
 
     // --- Generate Diary ---
@@ -357,6 +361,24 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.status === "success") {
                 statusEl.className = "status-message success";
                 statusEl.textContent = `Generated ${data.n_meals} meals and ${data.n_symptoms} symptoms`;
+
+                // Populate diary narrative panel
+                const triggerMeals = Math.round(data.n_meals * payload.trigger_exposure_rate);
+                const effectPct = Math.round(payload.trigger_effect_strength * 100);
+                const exposurePct = Math.round(payload.trigger_exposure_rate * 100);
+                const presetLabels = {
+                    balanced: "Balanced Testing",
+                    easy: "Easy Detection",
+                    difficult: "Difficult Detection",
+                    custom: "Custom",
+                };
+                const presetName = presetLabels[presetSelector.value] || null;
+                const presetSentence = presetName
+                    ? ` This diary was configured using the <strong>${presetName}</strong> preset.`
+                    : "";
+                const narrativeText = `The system ran a <strong>${payload.n_days}-day</strong> simulation and generated <strong>${data.n_meals} meals</strong>. Roughly <strong>${triggerMeals}</strong> of those meals contained <strong>${selectedTrigger}</strong>, your selected trigger ingredient, based on a ${exposurePct}% exposure rate. With a trigger effect strength of ${effectPct}%, there was a ${effectPct}% chance each exposure would produce a symptom, resulting in <strong>${data.n_symptoms} symptom episodes</strong> across the diary.${presetSentence}`;
+                document.getElementById("diary-narrative-text").innerHTML = narrativeText;
+                document.getElementById("diary-narrative").style.display = "";
 
                 // Enable Tab 2 and Tab 3
                 const tab2Btn = document.querySelector('[data-tab="tab2"]');
@@ -427,6 +449,13 @@ document.addEventListener("DOMContentLoaded", () => {
             _detectionGroundTruth = null;
             _detectionSummary = null;
 
+            // Hide and clear diary narrative panel
+            const narrativePanel = document.getElementById("diary-narrative");
+            if (narrativePanel) {
+                narrativePanel.style.display = "none";
+                document.getElementById("diary-narrative-text").innerHTML = "";
+            }
+
             // Clear status
             statusEl.className = "status-message";
             statusEl.textContent = "";
@@ -455,17 +484,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const emptyState = document.getElementById("diary-empty-state");
             const summary = document.getElementById("diary-summary");
+            const narrative = document.getElementById("diary-narrative");
             const timeline = document.getElementById("diary-timeline");
 
             if (data.status === "no_data") {
                 emptyState.style.display = "";
                 summary.style.display = "none";
+                narrative.style.display = "none";
                 timeline.style.display = "none";
                 return;
             }
 
             emptyState.style.display = "none";
             summary.style.display = "";
+            // narrative panel is populated and shown by the generation handler; preserve its state
             timeline.style.display = "";
 
             document.getElementById("summary-date-range").textContent = data.summary.date_range;
