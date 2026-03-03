@@ -252,6 +252,21 @@
                 <h2>Run Detection</h2>
                 <p class="tab-intro">This is where the system analyses your diary to find which ingredient is most likely responsible for the symptoms. It uses a statistical method that compares how often each ingredient appeared before a symptom versus in symptom-free periods. Click Run Detection Analysis to see the results and check whether the system found the hidden trigger you set up in Tab 1.</p>
 
+                <div class="detection-howto" id="detection-howto">
+                    <button class="detection-howto-trigger" id="detection-howto-trigger" aria-expanded="false">
+                        How does the detection work? <span class="detection-howto-arrow">&#9660;</span>
+                    </button>
+                    <div class="detection-howto-content" id="detection-howto-content">
+                        <div class="detection-howto-body">
+                            <h4>How the Detection Works</h4>
+                            <p>The detection method used here is called a case-crossover analysis. The core idea is straightforward: instead of comparing different people against each other, each diary is compared against itself.</p>
+                            <p>Every meal in the diary falls into one of two categories. A case meal is one that was followed by a symptom within your chosen watch period. A control meal is one that was not followed by a symptom. The algorithm looks at each ingredient and asks: did this ingredient appear more often in case meals than in control meals?</p>
+                            <p>If an ingredient consistently shows up before symptoms but is rarely present in symptom-free meals, it receives a high odds ratio and is flagged as suspicious. If it appears equally in both, it is considered unlikely to be the cause.</p>
+                            <p>This approach is particularly suited to dietary trigger detection because it accounts for each person's individual eating habits automatically. An ingredient that someone eats every day will appear in both case and control meals, so it will not be falsely flagged just because it is common in their diet.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="detection-empty-state" class="empty-state">
                     <p>Click the button below to analyze your diary and detect potential trigger ingredients.</p>
                     <button id="run-detection-btn" class="btn-primary" style="margin-top: 16px;">Run Detection Analysis</button>
@@ -289,7 +304,7 @@
 
                     <div id="verdict-banner" class="verdict-banner" style="display: none;"></div>
 
-                    <p class="tab-intro">Ingredients are ranked by combining two things: how strongly they were associated with your symptoms and how many times they were actually observed. An ingredient that appeared before symptoms many times is more trustworthy than one that only appeared once or twice with a high score by chance. This means the top of the list reflects both strength of evidence and volume of evidence, not just one or the other.</p>
+                    <p class="tab-intro">Ingredients are ranked by combining three things: the odds ratio, a confidence multiplier (HIGH = full weight, MEDIUM = half, LOW = one tenth), and how many case observations exist. This means an ingredient seen many times with moderate suspicion can rank above one seen rarely with a very high odds ratio.</p>
 
                     <div class="results-table-container">
                         <h3>Ingredient Analysis Results</h3>
@@ -308,8 +323,8 @@
                                 <tr>
                                     <th class="rank-col">#</th>
                                     <th>Ingredient</th>
-                                    <th>Odds Ratio <span class="col-info-icon" data-col-tooltip="This number tells you how much more often this ingredient appeared in meals before a symptom compared to meals without a symptom. A score above 1 means it appeared more often before symptoms, which makes it more suspicious. The higher the number, the stronger the association.">i</span></th>
-                                    <th>Confidence <span class="col-info-icon" data-col-tooltip="This reflects how much data we had for this ingredient. HIGH means the ingredient appeared enough times to trust the result. MEDIUM means there is some evidence but not a lot. LOW means the ingredient was rarely seen, so the result should be treated with caution.">i</span></th>
+                                    <th>Odds Ratio <span class="col-info-icon" data-col-tooltip="Compares how often this ingredient appeared before a symptom versus in symptom-free meals. Above 1 means more common before symptoms, so more suspicious. A 0.5 correction is added to both counts to handle ingredients with zero observations. The odds ratio alone does not determine ranking position.">i</span></th>
+                                    <th>Confidence <span class="col-info-icon" data-col-tooltip="Reflects how much data exists for this ingredient. HIGH means 10 or more observations with an odds ratio above 1. MEDIUM means 5 or more observations in either direction. LOW means fewer than 5 observations and the result should be treated with caution.">i</span></th>
                                     <th>U (Case) <span class="col-info-icon" data-col-tooltip="This is the number of times this ingredient appeared in a meal that was followed by a symptom within your watch period. A higher number means more symptom-linked observations.">i</span></th>
                                     <th>V (Control) <span class="col-info-icon" data-col-tooltip="This is the number of times this ingredient appeared in a meal that was NOT followed by a symptom. Comparing U and V is the core of the detection: if U is much larger than V, the ingredient is more suspicious.">i</span></th>
                                 </tr>

@@ -547,6 +547,21 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // --- Detection how-to collapsible ---
+    const howtoEl = document.getElementById("detection-howto");
+    const howtoBtn = document.getElementById("detection-howto-trigger");
+
+    if (sessionStorage.getItem("detection_howto_open") === "true") {
+        howtoEl.classList.add("open");
+        howtoBtn.setAttribute("aria-expanded", "true");
+    }
+
+    howtoBtn.addEventListener("click", () => {
+        const isOpen = howtoEl.classList.toggle("open");
+        howtoBtn.setAttribute("aria-expanded", isOpen.toString());
+        sessionStorage.setItem("detection_howto_open", isOpen.toString());
+    });
+
     // --- Detection ---
     const runDetectionBtn = document.getElementById("run-detection-btn");
     const rerunDetectionBtn = document.getElementById("rerun-detection-btn");
