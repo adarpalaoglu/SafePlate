@@ -312,6 +312,7 @@ document.addEventListener("DOMContentLoaded", () => {
         _allDetectionIngredients = null;
         _detectionGroundTruth = null;
         _detectionSummary = null;
+        _cooccurrenceRatios = null;
 
         // Hide diary narrative panel so stale text is not visible during regeneration
         const narrativePanel = document.getElementById("diary-narrative");
@@ -452,6 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
             _allDetectionIngredients = null;
             _detectionGroundTruth = null;
             _detectionSummary = null;
+            _cooccurrenceRatios = null;
 
             // Hide and clear diary narrative panel
             const narrativePanel = document.getElementById("diary-narrative");
@@ -605,7 +607,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let _allDetectionIngredients = null;
     let _detectionGroundTruth = null;
     let _detectionSummary = null;
-    let _cooccurrenceRatios = null; // ingredient -> ratio with trigger
+    let _cooccurrenceRatios = null;
 
     async function loadDetectionResults() {
         try {
@@ -633,16 +635,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
             document.getElementById("ground-truth-trigger").textContent = _detectionGroundTruth;
 
-            // Compute co-occurrence ratios from meal data
-            _cooccurrenceRatios = {};
-            try {
-                const diaryRes = await fetch("/get_diary_data");
-                const diaryData = await diaryRes.json();
-                if (diaryData.status === "success" && _detectionGroundTruth) {
-                    _cooccurrenceRatios = computeCooccurrence(diaryData.meals, _detectionGroundTruth);
+            // Compute algorithm-based co-occurrence ratios using only HIGH confidence triggers
+            const highConfTriggers = new Set(
+                data.ingredients
+                    .filter((i) => i.confidence === "HIGH" && i.final_OR > 1.0)
+                    .map((i) => i.ingredient)
+            );
+            if (highConfTriggers.size > 0) {
+                try {
+                    const diaryRes = await fetch("/get_diary_data");
+                    const diaryData = await diaryRes.json();
+                    if (diaryData.status === "success") {
+                        _cooccurrenceRatios = computeCooccurrence(diaryData.meals, highConfTriggers);
+                    }
+                } catch (_) {
+                    _cooccurrenceRatios = null;
                 }
-            } catch (e) {
-                console.warn("Could not compute co-occurrence ratios:", e);
+            } else {
+                _cooccurrenceRatios = null;
             }
 
             renderDetectionTable();
@@ -650,28 +660,6 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (err) {
             console.error("Failed to load detection results:", err);
         }
-    }
-
-    function computeCooccurrence(meals, trigger) {
-        const totalCount = {};   // ingredient -> total meal appearances
-        const withTrigger = {};  // ingredient -> appearances in meals containing trigger
-
-        meals.forEach((meal) => {
-            const ings = meal.ingredients;
-            const hasTrigger = ings.includes(trigger);
-            ings.forEach((ing) => {
-                totalCount[ing] = (totalCount[ing] || 0) + 1;
-                if (hasTrigger) {
-                    withTrigger[ing] = (withTrigger[ing] || 0) + 1;
-                }
-            });
-        });
-
-        const ratios = {};
-        for (const ing in totalCount) {
-            ratios[ing] = (withTrigger[ing] || 0) / totalCount[ing];
-        }
-        return ratios;
     }
 
     // Toggle handler for "Show all results" checkbox
@@ -687,6 +675,25 @@ document.addEventListener("DOMContentLoaded", () => {
         return "Appeared slightly more often before symptoms than without, but the difference is not strong enough to be confident.";
     }
 
+    function computeCooccurrence(meals, highConfTriggerSet) {
+        // For each ingredient, compute: ratio = meals(ingredient AND any high-conf trigger) / meals(ingredient)
+        const counts = {};
+        const withTrigger = {};
+        for (const meal of meals) {
+            const ings = meal.ingredients || [];
+            const hasTrigger = ings.some((i) => highConfTriggerSet.has(i));
+            for (const ing of ings) {
+                counts[ing] = (counts[ing] || 0) + 1;
+                if (hasTrigger) withTrigger[ing] = (withTrigger[ing] || 0) + 1;
+            }
+        }
+        const ratios = {};
+        for (const ing of Object.keys(counts)) {
+            ratios[ing] = (withTrigger[ing] || 0) / counts[ing];
+        }
+        return ratios;
+    }
+
     function renderDetectionTable() {
         if (!_allDetectionIngredients) return;
 
@@ -695,51 +702,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const showAll = document.getElementById("show-all-results").checked;
         const confMultiplier = { HIGH: 1.0, MEDIUM: 0.5, LOW: 0.1 };
-        const cooc = _cooccurrenceRatios || {};
 
         // Filter out protected ingredients
         const nonProtected = _allDetectionIngredients.filter((i) => !i.protected);
 
-        // Compute adjusted OR for each ingredient (co-occurrence penalty)
-        const withAdjusted = nonProtected.map((ing) => {
-            const ratio = cooc[ing.ingredient] || 0;
-            let adjustedOR = ing.final_OR;
-            if (ratio > 0.8 && ing.ingredient !== _detectionGroundTruth) {
-                adjustedOR = ing.final_OR * (1 - ratio);
-            }
-            return { ...ing, adjustedOR, coocRatio: ratio };
+        // Compute confidence-weighted ranking score for each ingredient
+        const ranked = nonProtected.map((ing) => {
+            const baseScore = ing.final_OR * (confMultiplier[ing.confidence] || 0.1) * Math.log(ing.U + 1);
+            const ratio = _cooccurrenceRatios ? (_cooccurrenceRatios[ing.ingredient] || 0) : 0;
+            const rankingScore = (ratio > 0.8 && ing.confidence !== "HIGH") ? baseScore * (1 - ratio) : baseScore;
+            return { ...ing, rankingScore };
         });
 
-        // Sort ALL items by evidence-weighted score: adjustedOR × conf × log(U+1)
-        withAdjusted.sort((a, b) => {
-            const scoreA = a.adjustedOR * (confMultiplier[a.confidence] || 0.1) * Math.log(a.U + 1);
-            const scoreB = b.adjustedOR * (confMultiplier[b.confidence] || 0.1) * Math.log(b.U + 1);
-            return scoreB - scoreA;
-        });
+        // Sort ALL items by confidence-weighted score: final_OR × conf × log(U+1)
+        ranked.sort((a, b) => b.rankingScore - a.rankingScore);
 
-        // Filter: show HIGH confidence, OR >= 1.5, U+V >= 5, cap at top 10
+        // Default view: confidence === "HIGH" only — consistent with definition (n >= 20, OR > 1.0)
         const topN = 10;
         let displayed;
         if (showAll) {
-            displayed = withAdjusted;
+            displayed = ranked;
         } else {
-            const candidates = withAdjusted.filter((i) =>
-                i.confidence === "HIGH" && i.adjustedOR >= 1.5 && (i.U + i.V) >= 5
-            );
-            displayed = candidates.slice(0, topN);
+            displayed = ranked.filter((i) => i.confidence === "HIGH").slice(0, topN);
         }
 
         // Count high-confidence items for summary stat
-        const highConf = withAdjusted.filter((i) => i.confidence === "HIGH");
+        const highConf = ranked.filter((i) => i.confidence === "HIGH");
         document.getElementById("det-summary-triggers").textContent = displayed.length;
 
         const filterSummary = document.getElementById("detection-filter-summary");
         if (showAll) {
-            filterSummary.textContent = `Showing all ${displayed.length} tested ingredients (${highConf.length} high-confidence)`;
+            filterSummary.textContent = `Showing all ${displayed.length} tested ingredients (${highConf.length} HIGH confidence)`;
         } else if (displayed.length === 0) {
-            filterSummary.textContent = `No high-confidence triggers detected (${nonProtected.length} tested). Try "Show all results".`;
+            const exposurePct = sliders.trigger_exposure ? parseInt(sliders.trigger_exposure.el.value) : null;
+            const effectPct = sliders.trigger_effect ? parseInt(sliders.trigger_effect.el.value) : null;
+            const paramLine = (exposurePct !== null && effectPct !== null)
+                ? ` Your trigger exposure rate was set to ${exposurePct}% and your trigger effect strength was set to ${effectPct}%.`
+                : "";
+            filterSummary.textContent = `No ingredients met the HIGH confidence threshold in this run. This means no ingredient was observed in 20 or more meals with an odds ratio above 1.${paramLine} This is most likely because your scenario parameters set a low trigger exposure rate or a weak trigger effect, making it difficult for any ingredient to accumulate enough evidence. Try increasing the trigger exposure rate or trigger effect strength in Tab 1 and regenerating the diary, or check "Show all results" to see all tested ingredients regardless of confidence.`;
         } else {
-            filterSummary.textContent = `Top ${displayed.length} most suspicious ingredients (of ${nonProtected.length} tested, ${highConf.length} high-confidence)`;
+            filterSummary.textContent = `Showing HIGH confidence ingredients. These are ingredients observed in 20 or more meals with an odds ratio above 1, indicating both sufficient evidence and a positive association with symptoms.`;
         }
 
         displayed.forEach((ing, idx) => {
@@ -748,24 +750,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 row.className = "ground-truth-row";
             }
 
-            const orClass = ing.adjustedOR >= 2.0 ? "or-high" : "or-neutral";
+            const orClass = ing.final_OR >= 2.0 ? "or-high" : "or-neutral";
             const confClass = ing.confidence === "HIGH" ? "confidence-high"
                 : ing.confidence === "MEDIUM" ? "confidence-medium" : "confidence-low";
 
             const namePrefix = ing.ingredient === _detectionGroundTruth ? "&#127919; " : "";
 
-            const orDisplay = ing.adjustedOR.toFixed(2);
-            const orNote = (ing.adjustedOR < ing.final_OR - 0.01)
-                ? ` <span class="or-original" title="Original OR before co-occurrence adjustment">(raw ${ing.final_OR.toFixed(2)})</span>`
-                : "";
-
-            const summary = getIngredientSummary(ing.adjustedOR, ing.U, ing.V);
+            const orDisplay = ing.final_OR.toFixed(2);
+            const summary = getIngredientSummary(ing.final_OR, ing.U, ing.V);
             const summaryHtml = summary ? `<div class="ing-summary">${summary}</div>` : "";
 
             row.innerHTML = `
                 <td class="rank-col">${idx + 1}</td>
                 <td>${namePrefix}${ing.ingredient}${summaryHtml}</td>
-                <td><span class="or-value ${orClass}">${orDisplay}</span>${orNote}</td>
+                <td><span class="or-value ${orClass}">${orDisplay}</span></td>
                 <td><span class="confidence-badge ${confClass}">${ing.confidence}</span></td>
                 <td>${ing.U}</td>
                 <td>${ing.V}</td>
@@ -780,26 +778,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const triggerName = _detectionGroundTruth;
         const confMultiplier = { HIGH: 1.0, MEDIUM: 0.5, LOW: 0.1 };
-        const cooc = _cooccurrenceRatios || {};
 
         // Replicate the same sort used in renderDetectionTable to get accurate rank
         const nonProtected = _allDetectionIngredients.filter((i) => !i.protected);
-        const withAdjusted = nonProtected.map((ing) => {
-            const ratio = cooc[ing.ingredient] || 0;
-            let adjustedOR = ing.final_OR;
-            if (ratio > 0.8 && ing.ingredient !== triggerName) {
-                adjustedOR = ing.final_OR * (1 - ratio);
-            }
-            return { ...ing, adjustedOR };
+        const ranked = nonProtected.map((ing) => {
+            const baseScore = ing.final_OR * (confMultiplier[ing.confidence] || 0.1) * Math.log(ing.U + 1);
+            const ratio = _cooccurrenceRatios ? (_cooccurrenceRatios[ing.ingredient] || 0) : 0;
+            const rankingScore = (ratio > 0.8 && ing.confidence !== "HIGH") ? baseScore * (1 - ratio) : baseScore;
+            return { ...ing, rankingScore };
         });
-        withAdjusted.sort((a, b) => {
-            const scoreA = a.adjustedOR * (confMultiplier[a.confidence] || 0.1) * Math.log(a.U + 1);
-            const scoreB = b.adjustedOR * (confMultiplier[b.confidence] || 0.1) * Math.log(b.U + 1);
-            return scoreB - scoreA;
-        });
+        ranked.sort((a, b) => b.rankingScore - a.rankingScore);
 
-        const total = withAdjusted.length;
-        const rankIdx = withAdjusted.findIndex((i) => i.ingredient === triggerName);
+        const total = ranked.length;
+        const rankIdx = ranked.findIndex((i) => i.ingredient === triggerName);
 
         const svgCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>`;
         const svgWarn  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
@@ -995,7 +986,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 lastQueryIngredient = ingredient;
                 lastRecommendations = data.recommendations;
 
-                renderRecommendations(data.recommendations, data.hide_same_group, data.n_same_group_hidden);
+                renderRecommendations(data.recommendations, data.hide_same_group, data.n_same_group_hidden, data.no_results_reason || null);
                 renderExcludedList(data.excluded_triggers);
 
                 // Enable Tab 5
@@ -1009,12 +1000,20 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function renderRecommendations(recommendations, hideSameGroup, nHidden) {
+    function renderRecommendations(recommendations, hideSameGroup, nHidden, noResultsReason) {
         const container = document.getElementById("recommendations-list");
         container.innerHTML = "";
 
         if (!recommendations || recommendations.length === 0) {
-            container.innerHTML = '<p class="help-text">No substitutes available for this ingredient.</p>';
+            let msg;
+            if (noResultsReason === "not_in_vocabulary") {
+                msg = "No substitutes could be found for this ingredient. It does not appear in the recipe similarity model, which means it was too rare across the recipe dataset to generate reliable culinary alternatives.";
+            } else if (noResultsReason === "all_excluded") {
+                msg = "No substitutes could be shown for this ingredient. Similar ingredients were found but all of them were excluded because they were detected as potential triggers in your diary. Try adjusting your detection parameters or searching for a different ingredient.";
+            } else {
+                msg = "No substitutes available for this ingredient.";
+            }
+            container.innerHTML = `<p class="help-text">${msg}</p>`;
             return;
         }
 
@@ -1026,7 +1025,7 @@ document.addEventListener("DOMContentLoaded", () => {
             let html = `
                 <div class="recommendation-header">
                     <span class="recommendation-name">${index + 1}. ${rec.ingredient}</span>
-                    <span class="recommendation-score">${rec.similarity.toFixed(3)}</span>
+                    <span class="recommendation-score"><span class="recommendation-score-label">Similarity:</span> ${rec.similarity.toFixed(3)}</span>
                 </div>
             `;
 
@@ -1074,7 +1073,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Preference note last
             if (rec.user_rank != null) {
-                textParts.push(`<p class="card-preference-note">This result also reflects your saved preferences for ${queryName} substitutes.</p>`);
+                textParts.push(`<p class="card-preference-note">You ranked this #${rec.user_rank} for ${queryName} substitutes, it has been promoted accordingly.</p>`);
             }
 
             html += `<div class="recommendation-explanation">${textParts.join("")}</div>`;
@@ -1122,17 +1121,49 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         triggers.forEach((trigger) => {
+            // Look up detection data for this trigger
+            let reason = "Excluded from recommendations.";
+            if (_allDetectionIngredients) {
+                const entry = _allDetectionIngredients.find((i) => i.ingredient === trigger);
+                if (entry) {
+                    if (entry.final_OR != null && entry.U != null && entry.V != null) {
+                        reason = `Flagged as suspicious: appeared ${entry.U} times before symptoms versus ${entry.V} times without (odds ratio ${parseFloat(entry.final_OR).toFixed(2)}).`;
+                    } else {
+                        reason = "Flagged as suspicious based on your diary analysis.";
+                    }
+                }
+            }
+
             const item = document.createElement("div");
             item.className = "excluded-item";
-            item.innerHTML = `<span>${trigger}</span>`;
+            item.innerHTML = `<div class="excluded-item-text"><span>${trigger}</span><span class="excluded-item-reason">${reason}</span></div>`;
             container.appendChild(item);
         });
     }
 
+    const recSearchStatus = document.getElementById("rec-search-status");
+    let recSearchStatusTimer = null;
+
+    function showRecSearchStatus(msg) {
+        recSearchStatus.textContent = msg;
+        recSearchStatus.style.display = "";
+        clearTimeout(recSearchStatusTimer);
+        recSearchStatusTimer = setTimeout(() => {
+            recSearchStatus.style.display = "none";
+            recSearchStatus.textContent = "";
+        }, 3000);
+    }
+
+    recIngredientSearch.addEventListener("input", () => {
+        recSearchStatus.style.display = "none";
+        recSearchStatus.textContent = "";
+        clearTimeout(recSearchStatusTimer);
+    });
+
     getSubstitutesBtn.addEventListener("click", () => {
         const ingredient = selectedRecIngredient || recIngredientSearch.value.trim();
         if (!ingredient) {
-            alert("Please select an ingredient first.");
+            showRecSearchStatus("Please select or search for an ingredient first.");
             return;
         }
         getRecommendationsFor(ingredient);
@@ -1332,6 +1363,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const pw = 280;
             let left = rect.left + rect.width / 2 - pw / 2;
             left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+            popup.style.width = pw + "px";
             popup.style.left = left + "px";
             popup.style.top = (rect.bottom + 8) + "px";
         }
@@ -1399,6 +1431,7 @@ document.addEventListener("DOMContentLoaded", () => {
             _allDetectionIngredients = null;
             _detectionGroundTruth = null;
             _detectionSummary = null;
+            _cooccurrenceRatios = null;
             statusEl.className = "status-message";
             statusEl.textContent = "";
         }

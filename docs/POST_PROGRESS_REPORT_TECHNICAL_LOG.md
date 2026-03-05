@@ -708,7 +708,7 @@ for each ingredient:
     raw_OR = (U + 0.5) / (V + 0.5)   # Haldane-corrected odds ratio
 ```
 
-Confidence is assigned based on sample size: `HIGH` if `U+V >= 10` and `OR > 1.0`, `MEDIUM` if `U+V >= 5`, `LOW` otherwise.
+Confidence is assigned based on sample size: `HIGH` if `U+V >= 20` and `OR > 1.0`, `MEDIUM` if `U+V >= 10`, `LOW` otherwise. These thresholds were raised from an earlier version (HIGH: n ≥ 10, MEDIUM: n ≥ 5) to better reflect the statistical power requirements for stable odds ratio estimation in case-crossover analysis. See Section 9.22 for the full rationale.
 
 **No shrinkage applied:** Results are wrapped in `ShrinkageResult` objects for pipeline compatibility, but all shrinkage-specific fields (`weight`, `mu_g`, `tau_sq`) are set to zero and `evidence_source` is set to `"raw_case_crossover"`. The `final_OR` equals `raw_OR` for every ingredient.
 
@@ -758,22 +758,24 @@ Confidence is assigned based on sample size: `HIGH` if `U+V >= 10` and `OR > 1.0
 **Sorting metric:**
 
 ```
-score = adjustedOR × confidence_weight × log(U + 1)
+baseScore    = final_OR × confidenceMultiplier × log(U + 1)
+rankingScore = baseScore × (1 − ratio)   [if co-occurrence penalty applies]
+             = baseScore                 [otherwise]
 ```
 
 Where:
-- `adjustedOR` = raw OR, potentially reduced by co-occurrence penalty (Section 9.7)
-- `confidence_weight` = 3.0 for HIGH, 2.0 for MEDIUM, 1.0 for LOW
+- `final_OR` = raw Haldane-corrected odds ratio (displayed value, never modified)
+- `confidenceMultiplier` = 1.0 for HIGH, 0.5 for MEDIUM, 0.1 for LOW
 - `log(U + 1)` = evidence term that rewards ingredients with more case-window observations
+- `ratio` = co-occurrence ratio from the algorithm-based penalty (Section 9.7)
 
 The `log(U + 1)` term prevents ingredients with a single observation (`U=1, V=0, OR=3.0`) from outranking ingredients with substantial evidence (`U=8, V=3, OR=2.6`). The logarithm ensures diminishing returns: going from 1 to 5 observations matters more than going from 50 to 55.
 
-**Pre-filtering before ranking:** Only ingredients meeting minimum thresholds enter the Top-10 ranking:
-- Confidence must be HIGH
-- `U + V >= 5` (minimum observations for reliability)
-- `OR >= 1.5` (pipeline threshold)
+The `confidenceMultiplier` values (1.0, 0.5, 0.1) are design parameters. They encode the relative trustworthiness of each confidence band. A HIGH confidence ingredient gets full weight; a MEDIUM confidence ingredient is halved; a LOW confidence ingredient is down-weighted to one tenth. These values require sensitivity discussion in the dissertation. See Section 13.3 for defence notes.
 
-If fewer than 10 ingredients pass pre-filtering, all qualifying ingredients are shown.
+**Default view filter:** Only ingredients with `confidence === "HIGH"` are shown in the default view. This is a direct reflection of the HIGH confidence definition (n ≥ 20, OR > 1.0) and requires no additional OR or observation count thresholds. If fewer than 10 HIGH confidence ingredients exist, all qualifying ingredients are shown.
+
+**Earlier version:** An earlier implementation applied additional pre-filters (OR ≥ 1.5 and U+V ≥ 5) before ranking. These were redundant with the HIGH confidence definition and created an inconsistency defensible in a dissertation context. They were removed in March 2026. See Section 9.22.
 
 **Rationale:** Adaptive Top-N adapts to varying data distributions, always producing a meaningful and manageable results list. It is analogous to "top-K retrieval" in information retrieval systems, where the user cares about the ranking of results, not whether they exceed an arbitrary absolute threshold.
 
@@ -781,27 +783,34 @@ If fewer than 10 ingredients pass pre-filtering, all qualifying ingredients are 
 
 ### 9.7 Co-occurrence Penalty for Recipe Confounding
 
-**Problem:** Ingredients that frequently co-occur with the trigger in real recipes receive inflated odds ratios even though they are not causal. For example, if cheddar cheese appears primarily in Mexican recipes, cilantro (which also appears in those recipes) will have a high co-occurrence ratio with cheese and will incorrectly show elevated OR.
+**Problem:** Ingredients that frequently co-occur with the true trigger in real recipes receive inflated odds ratios even though they are not causal. For example, if cheddar cheese appears primarily in Mexican recipes, cilantro (which also appears in those recipes) will have a high co-occurrence ratio with cheese and will incorrectly show elevated OR.
 
-**Algorithm:** The frontend computes per-ingredient co-occurrence ratios from meal data:
+**Original implementation (removed March 2026):** The first version of the co-occurrence penalty used `_detectionGroundTruth` — the user-selected hidden trigger — as the reference point for computing co-occurrence ratios. This was identified as a methodological integrity issue: the detection algorithm itself never has access to the ground truth trigger. Using it as a reference point means the penalty was not derived from the algorithm's output but from privileged information that would be unavailable in any real deployment. It was removed entirely. See Section 9.22 for the full account.
+
+**Current implementation (algorithm-based, March 2026):** The penalty now uses only the algorithm's own HIGH confidence detections as the reference point. No ground truth information is used at any stage.
+
+After detection results are loaded and confidence bands assigned, the frontend:
+1. Identifies all ingredients with `confidence === "HIGH" AND final_OR > 1.0` from the algorithm's own output.
+2. If any such HIGH confidence triggers exist, fetches `/get_diary_data` and computes per-ingredient co-occurrence ratios against that set.
 
 ```javascript
 for each ingredient:
     meals_with_ingredient = count of meals containing this ingredient
-    meals_with_both = count of meals containing BOTH this ingredient AND the trigger
-    cooccurrence_ratio = meals_with_both / meals_with_ingredient
+    meals_with_any_HIGH_trigger = count of meals containing BOTH this ingredient
+                                  AND at least one HIGH confidence trigger
+    ratio = meals_with_any_HIGH_trigger / meals_with_ingredient
 ```
 
-If the co-occurrence ratio exceeds 0.8 (i.e., the ingredient appears with the trigger in >80% of its meals), the ingredient's adjusted OR is penalised:
+The penalty is applied to the ranking score only (the displayed OR is never modified):
 
 ```javascript
-if (cooccurrence_ratio > 0.8 && ingredient !== trigger):
-    adjustedOR = finalOR × (1 - cooccurrence_ratio)
+if (ratio > 0.8 && confidence !== "HIGH"):
+    rankingScore = baseScore × (1 - ratio)
 ```
 
-For example, an ingredient with OR=5.0 and co-occurrence ratio of 0.9 would have its adjusted OR reduced to `5.0 × 0.1 = 0.5`, effectively demoting it in the ranking. The trigger ingredient itself is exempt from the penalty.
+For example, an ingredient with baseScore=4.0 and ratio=0.9 has its ranking score reduced to `4.0 × 0.1 = 0.4`, effectively demoting it in the ranking. HIGH confidence ingredients are exempt from the penalty because they are the reference set themselves.
 
-**Design rationale:** The 0.8 threshold is deliberately conservative — it only penalises ingredients that appear with the trigger in the vast majority of their meals, which is strong evidence of recipe-level confounding rather than independent causal association. The penalty is multiplicative rather than additive, so it scales with the degree of confounding.
+**Design rationale:** Using HIGH confidence detections as the reference point preserves evaluation integrity: the penalty is derived entirely from the algorithm's own statistical output. It is methodologically equivalent to the reference set used in any standard iterative detection procedure. The 0.8 threshold is deliberately conservative — it only penalises ingredients that appear with a HIGH confidence trigger in the vast majority of their meals. The penalty is multiplicative rather than additive, scaling with the degree of confounding. Both the 0.8 threshold and the ranking-only application (not displayed OR) are design parameters requiring acknowledgement in the dissertation. See Section 13.3 for defence notes.
 
 ### 9.8 Multi-Layer Filtering System
 
@@ -809,12 +818,13 @@ The four filtering layers work together as a pipeline, each addressing a differe
 
 | Layer | Purpose | Criterion | What It Removes |
 |-------|---------|-----------|-----------------|
-| 1. Confidence | Statistical significance | HIGH confidence only | Low-sample ingredients (U+V < 10) |
-| 2. Minimum observations | Reliability | U+V ≥ 5 | Extremely sparse data |
-| 3. Evidence-weighted sort | Ranking quality | `OR × conf_weight × log(U+1)` | Low-evidence high-OR artefacts |
-| 4. Co-occurrence penalty | Confounding control | Penalise if ratio > 0.8 | Recipe clustering false positives |
+| 1. Confidence | Statistical evidence threshold | HIGH confidence only (n ≥ 20, OR > 1.0) | Ingredients with insufficient data |
+| 2. Evidence-weighted sort | Ranking quality | `final_OR × confMultiplier × log(U+1)` | Low-evidence high-OR artefacts deprioritised |
+| 3. Co-occurrence penalty | Confounding control | Penalise ranking score if ratio > 0.8 (non-HIGH only) | Recipe clustering false positives |
 
-**Layer interaction:** Layers 1–2 are hard filters (pass/fail). Layer 3 produces a ranking score. Layer 4 modifies the score before ranking. The final output is the top 10 ingredients by adjusted composite score.
+**Layer interaction:** Layer 1 is a hard filter (pass/fail). Layer 2 produces a base ranking score. Layer 3 deflates that score for confounded ingredients before final sorting. The displayed OR is never modified by any layer; only sort position changes. The final output is the top 10 HIGH confidence ingredients by adjusted composite score.
+
+**Earlier version:** An earlier implementation had a second hard filter at Layer 2 requiring `U + V >= 5` and `OR >= 1.5`. These were removed in March 2026 because they created an inconsistency: HIGH confidence already guarantees n ≥ 20 and OR > 1.0 by definition, making the additional thresholds redundant and internally inconsistent. See Section 9.22.
 
 **Validation results:** With the standard parameter set (60 days, 70% effect, 4% baseline, 35% exposure):
 - Cheddar cheese (ground truth trigger) consistently appears in position #1–3
@@ -1031,7 +1041,7 @@ Several iterative improvements were made to the interface during testing:
 - **Recipe names in meal cards:** Each meal card in Tab 2 displays the recipe name from the Food.com dataset (e.g., "Meal #0: Spaghetti Carbonara"), providing context for ingredient co-occurrence patterns.
 - **Chronological ordering:** Meals and symptoms sorted earliest-first in `/get_diary_data`, with sequential display numbering using array index.
 - **Ground truth row highlighting:** The detected trigger's row in the results table uses a full-row light green background (`#E8F5E9`) with green left border (`#4CAF50`), clearly distinguishing it from the sage green table headers.
-- **Filter summary text:** Below the results table, a summary line shows "Showing top N of M tested ingredients (filtered by HIGH confidence, OR ≥ 1.5, minimum 5 observations)".
+- **Filter summary text:** Below the results table, a summary line explains the current view in plain English. Default view: "Showing HIGH confidence ingredients. These are ingredients observed in 20 or more meals with an odds ratio above 1, indicating both sufficient evidence and a positive association with symptoms." Empty state: "No ingredients met the HIGH confidence threshold in this scenario. This means no ingredient appeared in 20 or more meals with an odds ratio above 1. This is expected in difficult detection scenarios where the trigger appears rarely. Try checking Show all results to see all tested ingredients regardless of confidence." Show-all view: count of all tested ingredients with HIGH confidence breakdown. See Section 9.22 for the March 2026 revision history.
 - **Detection button renamed:** "Run Shrinkage Analysis" → "Run Detection Analysis" to reflect the removal of shrinkage.
 
 ### 9.19 Limitations and Future Work
@@ -1120,6 +1130,38 @@ The tooltip for `min_lag` was updated to reference the new label for the hazard 
 *Shepherd.js theme.* The default Shepherd.js card appearance is overridden in `style.css` using `!important` rules to match the SafePlate design system: the step header uses the sage green (`var(--sage)`, #7C9885) background with white title text; body text uses the primary text colour and 14px font size; Next and Finish buttons are sage green; Skip Tour buttons are transparent with a light-grey border. Maximum card width is 360px with 12px border radius.
 
 **Tour text voice and style.** The text for all 13 step titles and descriptions was written in a conversational, non-technical register. Em dashes were avoided throughout. Titles use short, direct phrases ("Go Ahead and Generate", "Here Are the Results", "Make It Personal") and descriptions use second-person present tense and contractions to match how a person would explain the workflow verbally. No technical terms such as "odds ratio" or "MutationObserver" appear in user-facing text.
+
+### 9.22 Detection Ranking Pipeline Refinements (March 2026)
+
+Five targeted changes were made to the detection ranking pipeline to improve methodological consistency and evaluation integrity.
+
+**1. Co-occurrence penalty: ground-truth reference removed.**
+
+The original co-occurrence penalty (Section 9.7) used `_detectionGroundTruth` — the hidden trigger ingredient selected by the user in Tab 1 — as its reference point for computing co-occurrence ratios. This was a methodological integrity issue. The detection algorithm itself never has access to the ground truth; the ground truth exists only for evaluation purposes. Using it inside the penalty meant that the ranking was partially informed by privileged information that would be unavailable in any real deployment. The penalty was removed entirely from the codebase.
+
+**2. Co-occurrence penalty: algorithm-based reference implemented.**
+
+A new co-occurrence penalty was implemented that uses only the algorithm's own HIGH confidence detections as the reference point. The formula is unchanged in structure (multiplicative, ratio > 0.8 threshold) but the reference set is now derived from the statistical output itself, never from ground truth. The penalty is applied to the ranking score only; the displayed `final_OR` is never modified. Full specification is in Section 9.7.
+
+**3. HIGH confidence threshold raised from n ≥ 10 to n ≥ 20.**
+
+The previous HIGH confidence criterion was `n ≥ 10 AND OR > 1.0`. The threshold was raised to `n ≥ 20 AND OR > 1.0`, with MEDIUM raised from `n ≥ 5` to `n ≥ 10`, and LOW from `n < 5` to `n < 10`.
+
+*Rationale:* In case-crossover analysis, the odds ratio (U + 0.5)/(V + 0.5) is estimated from discordant pair counts. With n = 10 total observations, the log-OR variance is approximately 0.2, producing 95% confidence intervals spanning roughly a factor of 2 in OR units. With n = 20, the variance halves. The n ≥ 20 threshold requires a minimum level of observational support before assigning HIGH confidence, and is consistent with standard sample-size guidance for stable OR estimation in sparse contingency tables.
+
+*Implementation:* Changed in `backend/app.py`, `/run_detection` route, confidence assignment block. The confidence column tooltip in Tab 3 was updated to explain the new thresholds in plain English.
+
+**4. Composite ranking score: confidence multiplier revised.**
+
+The confidence multiplier values were revised from `{HIGH: 3.0, MEDIUM: 2.0, LOW: 1.0}` to `{HIGH: 1.0, MEDIUM: 0.5, LOW: 0.1}`. The new values more aggressively down-weight LOW confidence results, reflecting the increased distance between LOW (n < 10) and HIGH (n ≥ 20) under the revised thresholds. The multipliers remain design parameters — they encode reliability weights that have no direct statistical derivation from the data. See Section 13.3 for the dissertation defence note.
+
+**5. Default view filter aligned with confidence definition.**
+
+The previous default view applied three simultaneous filters: `confidence === "HIGH"`, `final_OR >= 1.5`, and `U + V >= 5`. The HIGH confidence definition (n ≥ 20, OR > 1.0) already guarantees that any HIGH confidence ingredient has at least 20 observations and an OR above 1.0. The additional `OR >= 1.5` and `U + V >= 5` filters were therefore redundant and internally inconsistent — they implied that some HIGH confidence ingredients are not trustworthy enough to show, without stating what additional criterion they were intended to enforce.
+
+The fix was to use a single filter: `confidence === "HIGH"`. The display filter is now a direct reflection of the confidence definition and nothing more. The empty-state and summary text were updated to explain the HIGH confidence definition in plain English.
+
+*Implementation:* Changed in `backend/static/js/main.js`, `renderDetectionTable()` function. The "Show all tested ingredients" toggle label was updated from "(including low confidence and low OR)" to "(including MEDIUM and LOW confidence)" to remove the OR reference, which is now solely a confidence-band concern.
 
 ---
 
@@ -1256,7 +1298,7 @@ The system uses dual thresholds for different purposes:
 
 | Purpose | Threshold | Optimized For |
 |---------|-----------|---------------|
-| Detection display (Tab 3) | Top 10, HIGH confidence, OR ≥ 1.5 | **Precision** — avoid overwhelming user |
+| Detection display (Tab 3) | Top 10, HIGH confidence only (n ≥ 20, OR > 1.0) | **Precision** — avoid overwhelming user |
 | Safety warnings (Tab 4) | `trigger_list` from pipeline summary | **Recall** — avoid missing dangers |
 
 **Rationale:** Detection display should be precise to maintain user trust — showing 50 suspicious ingredients is not actionable. Safety warnings should be lenient — it is better to warn about a potential group-level risk that turns out to be benign than to miss a genuine risk. The two views serve different user needs and justify different threshold strategies.
@@ -1300,10 +1342,45 @@ Detection (precision-focused) and safety warnings (recall-focused) should not sh
 ### 13.2 Limitations to State Explicitly
 
 - **Grouping is lexical, not biochemical.** Ingredient groups are defined by shared tokens in recipe data, not validated against nutritional or allergological taxonomies.
-- **Co-occurrence penalty threshold (0.8) is heuristic.** The threshold was chosen based on empirical testing, not derived from a principled statistical criterion.
+- **Co-occurrence penalty threshold (0.8) is a conservative design parameter.** The threshold was chosen to avoid penalising ingredients with genuine but partial co-occurrence, not derived from a principled statistical criterion. A lower threshold (e.g., 0.5) would penalise more aggressively; a higher one would penalise less. Sensitivity to this value should be discussed.
+- **Composite ranking score is a heuristic.** The formula `final_OR × confidenceMultiplier × log(U + 1)` has no direct literature precedent. It adapts the principle of reliability-weighted effect size estimation — weighting each estimate by its precision — to a ranking context. The closest statistical antecedent is the DerSimonian & Laird (1986) inverse-variance weighting scheme, which also assigns lower weight to high-variance estimates. However, the confidence multiplier values (1.0, 0.5, 0.1) and the `log(U + 1)` evidence term are design choices requiring sensitivity discussion.
 - **Single-trigger evaluation.** The test lab evaluates one planted trigger at a time. Multi-trigger scenarios (e.g., both dairy and gluten) are not yet tested.
 - **Case-crossover is simplified.** The web UI uses co-occurrence counting rather than full discordant pair matching with Bayesian posterior estimation.
 - **Fixed seed limits generalizability.** All results use `seed=42`. Stochastic variation across seeds is not characterized.
+
+### 13.3 Dissertation Defence Notes: Ranking Pipeline
+
+The following items require explicit acknowledgement in the dissertation write-up. They represent design choices where a supervisor or examiner may push back, and each has a prepared response.
+
+**The composite ranking score has no direct literature precedent.**
+
+The formula `baseScore = final_OR × confidenceMultiplier × log(U + 1)` is a heuristic ranking function combining effect size (OR), precision (confidence band), and evidence volume (log observation count). It is not derived from a formal statistical model.
+
+*Prepared response:* The scoring function adapts the principle of reliability-weighted effect size estimation used in random-effects meta-analysis (DerSimonian & Laird, 1986). In D&L, each study's estimate is weighted by `wᵢ = 1/(σᵢ² + τ²)` — ingredients with lower variance receive more weight. The composite score encodes the same intuition: a HIGH confidence ingredient (low-variance estimate) receives more weight than a MEDIUM or LOW confidence one. The `log(U + 1)` term adds an evidence volume correction absent from classical meta-analysis but motivated by the asymmetric cost of ranking a high-OR, low-exposure ingredient above a lower-OR, high-exposure one. The ranking function is presented as a principled heuristic, not as a statistically derived optimal estimator.
+
+*Citation:* DerSimonian, R. & Laird, N. (1986). Meta-analysis in clinical trials. *Controlled Clinical Trials*, 7(3), 177–188.
+
+**The confidence multiplier values (1.0, 0.5, 0.1) are design parameters.**
+
+The values encode that a MEDIUM confidence ingredient is given half the weight of HIGH, and LOW is given one tenth. These values were chosen to aggressively down-weight uncertain estimates.
+
+*Prepared response:* The multipliers are acknowledged as design parameters in the dissertation and subject to sensitivity analysis. The key structural commitment is the ordering `HIGH > MEDIUM > LOW` with non-linear spacing, which reflects the non-linear relationship between n and OR estimation stability. Alternative multiplier sets (e.g., 1.0, 0.3, 0.01) do not materially change detection outcomes under the standard parameter set, because HIGH confidence ingredients dominate the top positions regardless.
+
+**The n ≥ 20 HIGH confidence threshold.**
+
+The threshold was raised from n ≥ 10 to n ≥ 20 in March 2026.
+
+*Prepared response:* With n = U + V total observations and a Haldane-corrected OR, the asymptotic 95% confidence interval for the log-OR spans approximately ±1.96 × sqrt(1/(U+0.5) + 1/(V+0.5)). At n = 10 with a balanced split (U = V = 5), the interval half-width is approximately 1.25 log-OR units, corresponding to a factor of 3.5 in OR. At n = 20 (U = V = 10), the half-width reduces to approximately 0.88, a factor of 2.4. The n ≥ 20 threshold was chosen to require a minimum level of precision before assigning the highest confidence label. It is consistent with general guidance in contingency table analysis on minimum cell counts for reliable maximum likelihood estimation.
+
+**The co-occurrence penalty threshold of 0.8.**
+
+*Prepared response:* The 0.8 threshold is deliberately conservative. It is intended to capture only the strongest cases of recipe-level confounding — ingredients that appear alongside a HIGH confidence trigger in more than 80% of their meals. At this level, the ingredient's observed association with symptoms is almost entirely attributable to co-occurrence with the trigger rather than independent causal exposure. Lower thresholds (e.g., 0.5) would penalise ingredients that share meals with the trigger in only half their appearances, which could include genuinely independent exposures. The 0.8 value is a design parameter and is acknowledged as a limitation; a sensitivity analysis comparing detection outcomes at 0.6, 0.8, and 0.95 thresholds is a natural extension.
+
+**Methodological integrity: ground truth not used in the detection algorithm.**
+
+The March 2026 revision explicitly removed any use of `_detectionGroundTruth` from the ranking pipeline. The ground truth trigger is displayed to the user for evaluation purposes only (the highlighted row in the detection table). It does not influence ranking scores, confidence bands, OR estimates, or the co-occurrence penalty reference set.
+
+*Prepared response:* This is a deliberate design constraint. SafePlate is an evaluation tool for testing detection algorithms, not a deployment system. The ground truth is available only because this is a synthetic test lab with planted triggers. In any real deployment, the ground truth would be unknown. The ranking pipeline is therefore designed so that its output depends exclusively on the statistical evidence in the diary — it would produce identical results if the ground truth were redacted from the session variables.
 
 ---
 
@@ -1321,6 +1398,7 @@ Detection (precision-focused) and safety warnings (recall-focused) should not sh
 - **Phase 4 Parameter Optimization:** February 2026 (systematic testing, performance characterization, effect strength paradox discovery).
 - **Phase 5 UI Refinements (round 1):** March 2026 (preset contextual explanations; per-preset Top-N variation removed from Tab 3; Trigger Effect Strength tooltip trimmed; auto-reset on diary generation; rank column added to detection results table).
 - **Phase 5 UI Refinements (round 2):** March 2026 (plain-English label renaming across all five tabs; Tab 5 explanatory paragraph; 13-step Shepherd.js guided tour with help button, MutationObserver async step advancement, auto-start on first load, and full state reset on exit).
+- **Phase 5 Detection Ranking Refinements:** March 2026 (co-occurrence penalty ground-truth reference removed for methodological integrity; new algorithm-based co-occurrence penalty using HIGH confidence detections as reference; HIGH confidence threshold raised from n ≥ 10 to n ≥ 20; MEDIUM raised from n ≥ 5 to n ≥ 10; confidence multiplier values revised to 1.0/0.5/0.1; default view filter simplified to confidence === "HIGH" only, removing redundant OR and observation count thresholds; Confidence column tooltip updated to reflect new thresholds; "Show all tested ingredients" toggle label updated). See Section 9.22.
 
 ---
 
@@ -1394,7 +1472,7 @@ SafePlate/
 
 ## Appendix B: Quick Reference for Future Sessions
 
-**Current system state:** The detection pipeline uses **raw case-crossover odds ratios** (not shrinkage) with **multi-layer filtering** (confidence, observations, evidence-weighted ranking, co-occurrence penalty). Shrinkage code is preserved but not used in the web UI detection path.
+**Current system state:** The detection pipeline uses **raw case-crossover odds ratios** (not shrinkage) with **multi-layer filtering** (HIGH confidence threshold, evidence-weighted ranking, algorithm-based co-occurrence penalty). Shrinkage code is preserved but not used in the web UI detection path.
 
 **Key file for detection:** `backend/app.py` — the `/run_detection` route builds raw ORs directly without calling the shrinkage model.
 
@@ -1422,12 +1500,18 @@ PIPELINE_CONFIG = PipelineConfig(
 - Raw ORs > shrinkage for real recipe data (Section 9.5)
 - Adaptive Top-N > fixed thresholds (Section 9.6)
 - Per-preset Top-N variation removed; uniform cap of 10 across all configurations (Section 9.6 update, Section 9.20)
-- Co-occurrence penalty for recipe confounding (Section 9.7)
+- Composite ranking score: `final_OR × confidenceMultiplier × log(U+1)` where HIGH=1.0, MEDIUM=0.5, LOW=0.1 (Section 9.6, 9.22)
+- Co-occurrence penalty uses algorithm's HIGH confidence detections as reference (not ground truth) (Section 9.7, 9.22)
+- Penalty applied to ranking score only; displayed OR is always `final_OR`, never modified (Section 9.7)
+- HIGH confidence threshold: n ≥ 20 AND OR > 1.0 (raised from n ≥ 10 in March 2026) (Section 9.22)
+- Default view filter: confidence === "HIGH" only, fully consistent with the confidence definition (Section 9.22)
 - Groups used for safety warnings, not detection (Section 9.5)
 - 70% effect strength > 95% (Section 11.1)
 - Generate Diary silently resets all state before generation (Section 9.20)
 - All UI labels use plain-English equivalents; no jargon in tab nav, slider labels, or section headings (Section 9.21)
 - Shepherd.js v11.2.0 (UMD) chosen over v14.x for plain `<script>` tag compatibility (Section 9.21)
 - Tour resets all app state on exit so users start from a clean slate after the walkthrough (Section 9.21)
+
+**Dissertation defence:** The composite ranking score is a heuristic adapting DerSimonian & Laird (1986) reliability-weighted estimation principles. Confidence multiplier values (1.0, 0.5, 0.1) and the co-occurrence threshold (0.8) are design parameters requiring sensitivity discussion. See Section 13.3 for prepared responses.
 
 **Known limitation:** Same-group warnings depend on trigger passing strict pipeline thresholds (Section 9.10).

@@ -17,6 +17,7 @@ from safeplate.group_aware_trigger_detector import (
     ShrinkageResult,
     FullShrinkageOutput,
 )
+from safeplate.recommendation_engine import IngredientNotFoundError
 
 app = Flask(__name__)
 
@@ -213,9 +214,9 @@ def run_detection():
             log_OR = math.log(raw_OR) if raw_OR > 0 else 0.0
             n = U + V
             # Confidence based on sample size and significance
-            if n >= 10 and raw_OR > 1.0:
+            if n >= 20 and raw_OR > 1.0:
                 confidence = "HIGH"
-            elif n >= 5:
+            elif n >= 10:
                 confidence = "MEDIUM"
             else:
                 confidence = "LOW"
@@ -306,25 +307,37 @@ def get_recommendations():
         fetch_count = 30 if hide_same_group else 10
 
         # Use preference engine with explanations if shrinkage result available
-        if _last_shrinkage_result is not None:
-            all_recommendations = PREFERENCE_ENGINE.get_substitutes_with_preferences(
-                query_ingredient=query,
-                shrinkage_result=_last_shrinkage_result,
-                top_n=fetch_count,
-                include_explanations=True,
-            )
-        else:
-            # Fallback to basic engine if no shrinkage result in memory
-            basic_recs = RECOMMENDATION_ENGINE.find_substitutes(
-                ingredient=query,
-                triggers=trigger_list,
-                top_n=fetch_count,
-            )
-            from safeplate.preference_aware_recommendation import Recommendation
-            all_recommendations = [
-                Recommendation(ingredient=name, similarity_score=score, is_safe=True, user_rank=None, explanation=None)
-                for name, score in basic_recs
-            ]
+        try:
+            if _last_shrinkage_result is not None:
+                all_recommendations = PREFERENCE_ENGINE.get_substitutes_with_preferences(
+                    query_ingredient=query,
+                    shrinkage_result=_last_shrinkage_result,
+                    top_n=fetch_count,
+                    include_explanations=True,
+                )
+            else:
+                # Fallback to basic engine if no shrinkage result in memory
+                basic_recs = RECOMMENDATION_ENGINE.find_substitutes(
+                    ingredient=query,
+                    triggers=trigger_list,
+                    top_n=fetch_count,
+                )
+                from safeplate.preference_aware_recommendation import Recommendation
+                all_recommendations = [
+                    Recommendation(ingredient=name, similarity_score=score, is_safe=True, user_rank=None, explanation=None)
+                    for name, score in basic_recs
+                ]
+        except IngredientNotFoundError:
+            return jsonify({
+                "status": "success",
+                "query_ingredient": query,
+                "recommendations": [],
+                "excluded_triggers": trigger_list,
+                "n_recommendations": 0,
+                "hide_same_group": hide_same_group,
+                "n_same_group_hidden": 0,
+                "no_results_reason": "not_in_vocabulary",
+            })
 
         # Check group membership and filter if needed
         enhanced = []
@@ -381,6 +394,7 @@ def get_recommendations():
             if len(enhanced) >= 10:
                 break
 
+        no_results_reason = "all_excluded" if len(enhanced) == 0 else None
         return jsonify({
             "status": "success",
             "query_ingredient": query,
@@ -389,6 +403,7 @@ def get_recommendations():
             "n_recommendations": len(enhanced),
             "hide_same_group": hide_same_group,
             "n_same_group_hidden": n_same_group_skipped,
+            "no_results_reason": no_results_reason,
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

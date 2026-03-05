@@ -296,7 +296,7 @@
                                 <span id="det-summary-high-conf" class="stat-value">-</span>
                             </div>
                             <div class="stat-item">
-                                <span class="stat-label">Protected Safe</span>
+                                <span class="stat-label">Protected Safe <span class="col-info-icon" data-col-tooltip="Some ingredients show strong statistical evidence that they are not triggers. Specifically, if an ingredient appeared significantly more often in symptom-free meals than before symptoms, the algorithm classifies it as protected safe. These ingredients are excluded from the suspicious ingredients list entirely. A count of 0 means no ingredient met this criterion in your current diary.">i</span></span>
                                 <span id="det-summary-protected" class="stat-value">-</span>
                             </div>
                         </div>
@@ -316,7 +316,7 @@
                         <p id="detection-filter-summary" class="filter-summary"></p>
                         <label class="show-all-toggle">
                             <input type="checkbox" id="show-all-results">
-                            Show all tested ingredients (including low confidence and low OR)
+                            Show all tested ingredients (including MEDIUM and LOW confidence)
                         </label>
                         <table class="detection-table">
                             <thead>
@@ -324,7 +324,7 @@
                                     <th class="rank-col">#</th>
                                     <th>Ingredient</th>
                                     <th>Odds Ratio <span class="col-info-icon" data-col-tooltip="Compares how often this ingredient appeared before a symptom versus in symptom-free meals. Above 1 means more common before symptoms, so more suspicious. A 0.5 correction is added to both counts to handle ingredients with zero observations. The odds ratio alone does not determine ranking position.">i</span></th>
-                                    <th>Confidence <span class="col-info-icon" data-col-tooltip="Reflects how much data exists for this ingredient. HIGH means 10 or more observations with an odds ratio above 1. MEDIUM means 5 or more observations in either direction. LOW means fewer than 5 observations and the result should be treated with caution.">i</span></th>
+                                    <th>Confidence <span class="col-info-icon" data-col-tooltip="Reflects how much observational evidence exists for this ingredient. HIGH means the ingredient appeared in 20 or more meals and its odds ratio is above 1, indicating both sufficient data and a positive association with symptoms. MEDIUM means it appeared in 10 or more meals. LOW means fewer than 10 total appearances, so the result should be treated with caution.">i</span></th>
                                     <th>U (Case) <span class="col-info-icon" data-col-tooltip="This is the number of times this ingredient appeared in a meal that was followed by a symptom within your watch period. A higher number means more symptom-linked observations.">i</span></th>
                                     <th>V (Control) <span class="col-info-icon" data-col-tooltip="This is the number of times this ingredient appeared in a meal that was NOT followed by a symptom. Comparing U and V is the core of the detection: if U is much larger than V, the ingredient is more suspicious.">i</span></th>
                                 </tr>
@@ -373,6 +373,7 @@
                             </div>
                             <button id="get-substitutes-btn" class="btn-primary">Get Substitutes</button>
                         </div>
+                        <p id="rec-search-status" class="rec-search-status" style="display: none;"></p>
                     </div>
 
                     <div id="recommendations-results" style="display: none;">
