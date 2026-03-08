@@ -674,6 +674,8 @@ Percentage sliders (trigger effect, baseline rate, trigger exposure) display val
 
 ### 9.3 Tab 2: View Diary
 
+> **Note (March 2026):** The two-column layout described in this section was completely replaced by a unified chronological timeline. See Section 9.23 for the current Tab 2 implementation.
+
 Tab 2 displays the generated diary in a two-column timeline layout with chronological ordering.
 
 **Summary card:** A 4-column grid showing date range, total meals, total symptoms, and number of days. Values use monospace font for numerical alignment.
@@ -1163,9 +1165,161 @@ The fix was to use a single filter: `confidence === "HIGH"`. The display filter 
 
 *Implementation:* Changed in `backend/static/js/main.js`, `renderDetectionTable()` function. The "Show all tested ingredients" toggle label was updated from "(including low confidence and low OR)" to "(including MEDIUM and LOW confidence)" to remove the OR reference, which is now solely a confidence-band concern.
 
+### 9.23 Tab 2 Explainability and UX Improvements (March 2026)
+
+This section documents the complete redesign of Tab 2 and the addition of the parameter validation panel. All changes are purely display-layer. No backend generation logic, detection routes, or recommendation routes were affected.
+
+**Unified chronological timeline**
+
+The two-column meals/symptoms layout (documented in Section 9.3) was replaced by a single vertical timeline. All diary events appear in strict chronological order in one column, driven by a new `renderTimeline(meals, symptoms)` function in `main.js` that replaces the previous `renderMeals()` and `renderSymptoms()` functions.
+
+Event types and visual treatment:
+
+| Entry type | Left dot colour | Card style | Indent |
+|------------|-----------------|-----------|--------|
+| Regular meal | Sage green | White background, standard border | None |
+| Trigger meal | Terracotta | White background, terracotta left border, dashed connector line below | None |
+| Trigger symptom | Terracotta (small) | Terracotta-tinted background | 40px left |
+| Background symptom | Slate blue | Light blue-grey background, slate blue left border | None |
+
+Trigger-caused symptom cards appear directly below the meal that caused them. Background symptoms appear at their chronological position among other entries. A legend above the timeline explains all entry types.
+
+**Symptom-to-meal linking**
+
+Two fields were added to symptom objects to support explicit linking:
+
+- `triggering_meal_id` (int or null): the `meal_id` of the meal responsible for this symptom, or null for background symptoms.
+- `is_trigger_caused` (bool): true if the symptom was generated because the meal contained the trigger ingredient.
+
+Backend changes: both fields set in `DiaryGenerator.generate_symptoms()` at the single `self._symptoms.append()` call, using the existing `has_trigger` boolean already computed for each meal. Both fields are serialised in `app.py`'s `serialisable_symptoms` construction and returned via `/get_diary_data`.
+
+Frontend use: `renderTimeline` groups symptoms by `triggering_meal_id` to build the `symptomsByMeal` lookup, and uses `is_trigger_caused` to distinguish the two symptom types when routing events into the interleaved events array.
+
+**Symptom card content**
+
+Every symptom card now displays:
+- "Symptom #N" as the primary bold label, using the `symptom_id` field from the backend
+- For trigger symptoms: "Occurred X hours after [recipe name]." computed from `symptom.timestamp - linkedMeal.timestamp`, with "shortly" as the label when the difference is less than 0.5 hours. Falls back to "Occurred after a meal in the diary." when the meal cannot be looked up by `triggering_meal_id`.
+- For background symptoms: "Not linked to a specific meal. This symptom occurred independently of the trigger ingredient."
+
+**Case and control meal labels**
+
+Every meal card shows a pill label in the top-right corner classifying it as a case meal or control meal. Classification is computed at render time using the hazard window slider value at the moment the timeline is drawn, snapshotted so that subsequent slider adjustments do not change displayed labels.
+
+A meal is a case meal if any symptom's timestamp falls within `[meal.timestamp, meal.timestamp + hazard_window_hours * 3600000 ms]`. Otherwise it is a control meal.
+
+Case meal label: terracotta tint, terracotta text and border. Control meal label: sage green tint, sage green text and border. Both labels have styled hover tooltips explaining the case-crossover classification in plain English, served via the shared `#col-tooltip-popup` element through a new event-delegated listener on `#diary-timeline`.
+
+**Trigger ingredient highlighting**
+
+Meals containing the hidden trigger ingredient are visually distinguished in two ways:
+
+1. The matching ingredient tag within the card's ingredient list is highlighted in terracotta (rgba background, terracotta text and border, slightly heavier font weight). The comparison is case-insensitive and uses the snapshotted `_generationSnapshot.selected_trigger` value captured at diary generation time, so subsequent trigger selector changes have no effect.
+2. A small "Contains trigger" label appears inline after the meal timestamp, in terracotta text with a warning icon. Hovering shows a tooltip: "This meal contained [trigger ingredient], the hidden trigger ingredient you selected in Tab 1. The detection algorithm will analyse whether meals containing this ingredient were disproportionately followed by symptoms."
+
+The legend above the timeline includes a real `.ingredient-tag-trigger` pill (labelled "Contains trigger ingredient") so the colour coding is explained before the user scrolls the timeline.
+
+**Parameter validation panel**
+
+A new panel titled "How Your Parameters Shaped This Diary" appears below the post-generation narrative paragraph and above the timeline legend. It shows a three-column comparison table: parameter name, what the user set, and what was actually generated.
+
+All parameter values are captured in a `_generationSnapshot` object at the moment the generate button succeeds. This object is cleared when the diary is regenerated or reset, and the panel is hidden when no snapshot exists. The panel does not change if sliders are adjusted after generation.
+
+Five rows are displayed:
+
+| Row | Parameter | Computed stat |
+|-----|-----------|---------------|
+| 1 | Trigger Exposure Rate | Count and percentage of meals containing the trigger ingredient, computed from the meals array |
+| 2 | Trigger Effect Strength | Count of trigger-caused symptoms out of total trigger meals (with percentage) |
+| 3 | Background Symptom Rate | Count and percentage of background symptoms |
+| 4 | Hazard Window | Snapshotted value, shown as informational |
+| 5 | Diary Length | Total meals across diary length, with meals-per-day average |
+
+Rows 1 and 2 include a reassuring deviation note when the actual value differs from the set value by more than 5 and 10 percentage points respectively. Notes are presented in muted text with no warning colours.
+
+**Parameter validation panel bug fix (March 2026)**
+
+A counting bug was identified and corrected in the Trigger Effect Strength row. The original implementation derived `triggerMealCount` (the denominator in "Y out of Z trigger meals were followed by a symptom") from the symptoms array, using the set of unique `triggering_meal_id` values. This only captured meals that had already produced a trigger symptom, making the numerator and denominator identical and displaying 100% regardless of the configured effect strength.
+
+The fix: `triggerMealCount` is now computed directly from the meals array as `meals.filter(m => m.ingredients && m.ingredients.includes(snap.selected_trigger)).length`. This counts all meals containing the trigger ingredient, which is the correct denominator. The numerator (`triggerCausedSymptoms`, count of symptoms with `is_trigger_caused === true`) was correct and unchanged.
+
+The diary generator itself was confirmed correct throughout. The generator applies `P(symptom | trigger meal) = trigger_effect_strength` as a Bernoulli draw at `diary_generator.py:364`. No code path forces this probability to 1.0. The error was purely in the frontend display counting logic.
+
+**Tab 2 to Tab 3 bridge note**
+
+A short note appears at the bottom of Tab 2 introducing the concepts of case meals and control meals before the user moves to the detection tab, so they arrive at Tab 3 with the correct mental model for interpreting the case-crossover results.
+
 ---
 
-## 10. Phase 3: Production Code Refactoring
+### 9.24 Tab 3 Explainability Improvements (March 2026)
+
+Six explainability features were added to the detection results tab. No detection algorithm logic, OR calculations, or confidence band assignments were changed.
+
+**Collapsible case-crossover explanation**
+
+A collapsible "How does the detection work?" section was added immediately below the Tab 3 heading paragraph. It explains the case-crossover principle in plain English: within-person comparison of meals before a symptom (case meals) against symptom-free meals (control meals), with each ingredient's U and V counts representing these two groups respectively. Collapsed by default with a "Show explanation" label; expands on click with smooth CSS animation. State persists across tab switches within a session.
+
+**Detection verdict banner**
+
+A verdict banner appears below the Detection Summary card after results are loaded. It states explicitly whether the system succeeded or failed at identifying the hidden trigger ingredient. Three variants:
+
+- Trigger Correctly Identified (sage green background): the ground truth trigger is ranked #1
+- Trigger Found but Not Ranked First (muted amber background): the trigger appears in results but not at rank 1
+- Trigger Not Identified (slate blue background): the trigger does not appear in the top results
+
+The banner does not change on hover. Its text is generated from the ranked ingredient list by checking whether the ground truth trigger name matches the #1 result or any result within the displayed set.
+
+**Column header tooltips**
+
+Styled info icon tooltips were added to four column headers in the detection results table: Odds Ratio, Confidence, U (Case), and V (Control). Each tooltip uses the shared `#col-tooltip-popup` element. The tooltip text is accurate to the actual algorithm: U is described as "the number of meals containing this ingredient that were followed by a symptom within the hazard window", not as a discordant pair count (the simplified co-occurrence counting used here differs from full discordant-pair case-crossover). The Protected Safe label in the Detection Summary card also received an info icon tooltip explaining the protection criterion and the meaning of a count of zero.
+
+**Per-row plain English summaries**
+
+Each ingredient row in the results table now shows a one-line plain English summary below the ingredient name. The summary is generated from the row's actual U, V, and OR values rather than generic text. Example: "This ingredient appeared before 8 symptoms and 3 symptom-free periods (OR 2.1). Seen enough times for a reliable estimate." The summary respects the confidence band and adapts its language accordingly.
+
+**Ranking explanation paragraph**
+
+A paragraph above the results table explains the three-factor composite ranking score: OR multiplied by a confidence multiplier (1.0 for HIGH, 0.5 for MEDIUM, 0.1 for LOW) multiplied by log(U + 1), where the log term rewards ingredients with more case-window observations and the multiplier down-weights uncertain estimates. A collapsible "How is this ranked?" interaction reveals this explanation without adding visual bulk to the default view.
+
+**Collapsible detection method explainer**
+
+A collapsible panel explaining the detection method in more technical depth was added to the results section. It covers the Haldane-corrected odds ratio formula, the role of U and V, and the confidence band definitions, written at a level appropriate for a scientifically literate user reading the diary rather than a statistician. Collapsed by default.
+
+---
+
+### 9.25 Tab 4 Explainability Improvements (March 2026)
+
+Five targeted improvements were made to the recommendations interface.
+
+**How recommendations are generated**
+
+A plain English explanation was added above the ingredient search bar describing the Node2Vec embedding approach: recommendations are based on recipe co-occurrence similarity, meaning the system suggests ingredients that tend to appear in similar culinary contexts, not ingredients that are nutritionally or categorically similar.
+
+**Per-card evidence text**
+
+Each recommendation card already displayed a similarity score. The card was extended with structured explanation text covering: the similarity score with a qualitative band label (e.g., "High similarity (0.82)"), the cooking context similarity, and a safety conclusion derived from the ingredient's OR and confidence level if it was tested in the generated diary.
+
+**Excluded ingredients panel explanations**
+
+Each ingredient in the excluded triggers panel now shows a one-line explanation below its name giving the OR, U, and V values and the reason for exclusion in plain English (e.g., "Odds ratio 2.4 based on 22 meals. Excluded as a detected trigger.").
+
+**Preference rank on recommendation cards**
+
+When saved user preferences influenced the recommendation order, cards now display "You ranked this #N for [ingredient] substitutes, it has been promoted accordingly." instead of the previous generic preference note. The rank number N and the query ingredient name are both populated from the recommendation metadata.
+
+**Similarity score label**
+
+The bare similarity score in the recommendation card header now has a "Similarity:" label preceding it, replacing the unlabelled numeric value.
+
+**Distinct no-substitutes messages**
+
+The single "no substitutes found" message was replaced by two distinct messages depending on cause. When the query ingredient is not in the Node2Vec embedding vocabulary, the message explains that the ingredient was too rare in the recipe dataset to generate reliable culinary alternatives. When the ingredient is in the vocabulary but all similar candidates were excluded as detected triggers, the message explains this separately. The two causes are distinguishable because the `recommendation_engine.py` raises `IngredientNotFoundError` specifically when the ingredient is absent from the vocabulary; the Flask route catches this exception and returns `no_results_reason: "not_in_vocabulary"`, while an empty result with a known ingredient returns `no_results_reason: "all_excluded"`.
+
+**Styled validation message**
+
+The native browser `alert()` for the case where no ingredient is selected was replaced with a styled inline message rendered below the Get Substitutes button, consistent with other status messages in the interface.
+
+---
 
 **Status:** Completed
 **Date:** February 2026
@@ -1347,6 +1501,7 @@ Detection (precision-focused) and safety warnings (recall-focused) should not sh
 - **Single-trigger evaluation.** The test lab evaluates one planted trigger at a time. Multi-trigger scenarios (e.g., both dairy and gluten) are not yet tested.
 - **Case-crossover is simplified.** The web UI uses co-occurrence counting rather than full discordant pair matching with Bayesian posterior estimation.
 - **Fixed seed limits generalizability.** All results use `seed=42`. Stochastic variation across seeds is not characterized.
+- **Parameter validation panel values are display-only.** The "How Your Parameters Shaped This Diary" panel computes all statistics from the data returned by `/get_diary_data`, not from a separate audit endpoint. Its correctness depends on the frontend counting logic being consistent with the backend generation logic. The March 2026 denominator bug fix confirmed that these two layers can diverge. The panel is a transparency aid, not a formal audit trail.
 
 ### 13.3 Dissertation Defence Notes: Ranking Pipeline
 
@@ -1376,6 +1531,12 @@ The threshold was raised from n ≥ 10 to n ≥ 20 in March 2026.
 
 *Prepared response:* The 0.8 threshold is deliberately conservative. It is intended to capture only the strongest cases of recipe-level confounding — ingredients that appear alongside a HIGH confidence trigger in more than 80% of their meals. At this level, the ingredient's observed association with symptoms is almost entirely attributable to co-occurrence with the trigger rather than independent causal exposure. Lower thresholds (e.g., 0.5) would penalise ingredients that share meals with the trigger in only half their appearances, which could include genuinely independent exposures. The 0.8 value is a design parameter and is acknowledged as a limitation; a sensitivity analysis comparing detection outcomes at 0.6, 0.8, and 0.95 thresholds is a natural extension.
 
+**The parameter validation panel confirmed diary generation is correct.**
+
+The "How Your Parameters Shaped This Diary" panel initially displayed 100% for Trigger Effect Strength regardless of the configured value. A debugging investigation confirmed that the diary generator itself was always correct: `P(symptom | trigger meal) = trigger_effect_strength` is applied as a standard Bernoulli draw with no overrides. The error was entirely in the frontend display counting logic: the denominator was derived from the symptoms array (meals that produced a symptom) rather than the meals array (all meals containing the trigger ingredient), making numerator and denominator identical by construction.
+
+*Prepared response:* The bug was a display counting error in JavaScript, not a generation error in Python. The Bernoulli sampling in `diary_generator.py` is correct and was confirmed by inspection. The fix is a one-line change to the denominator calculation: `meals.filter(m => m.ingredients.includes(snap.selected_trigger)).length`. The panel is a transparency aid; any discrepancy between its display and the underlying data would be noted but would not affect the statistical results in Tab 3, which are computed server-side from the actual diary data.
+
 **Methodological integrity: ground truth not used in the detection algorithm.**
 
 The March 2026 revision explicitly removed any use of `_detectionGroundTruth` from the ranking pipeline. The ground truth trigger is displayed to the user for evaluation purposes only (the highlighted row in the detection table). It does not influence ranking scores, confidence bands, OR estimates, or the co-occurrence penalty reference set.
@@ -1399,6 +1560,9 @@ The March 2026 revision explicitly removed any use of `_detectionGroundTruth` fr
 - **Phase 5 UI Refinements (round 1):** March 2026 (preset contextual explanations; per-preset Top-N variation removed from Tab 3; Trigger Effect Strength tooltip trimmed; auto-reset on diary generation; rank column added to detection results table).
 - **Phase 5 UI Refinements (round 2):** March 2026 (plain-English label renaming across all five tabs; Tab 5 explanatory paragraph; 13-step Shepherd.js guided tour with help button, MutationObserver async step advancement, auto-start on first load, and full state reset on exit).
 - **Phase 5 Detection Ranking Refinements:** March 2026 (co-occurrence penalty ground-truth reference removed for methodological integrity; new algorithm-based co-occurrence penalty using HIGH confidence detections as reference; HIGH confidence threshold raised from n ≥ 10 to n ≥ 20; MEDIUM raised from n ≥ 5 to n ≥ 10; confidence multiplier values revised to 1.0/0.5/0.1; default view filter simplified to confidence === "HIGH" only, removing redundant OR and observation count thresholds; Confidence column tooltip updated to reflect new thresholds; "Show all tested ingredients" toggle label updated). See Section 9.22.
+- **Phase 6 Tab 2 Redesign:** March 2026 (two-column layout replaced by unified chronological timeline; symptom-to-meal linking added via `triggering_meal_id` and `is_trigger_caused` fields; trigger symptom cards show elapsed time and meal name; background symptom cards show explanatory text; case/control meal labels with hazard-window classification and tooltips; trigger ingredient tag highlighting and "Contains trigger" indicator with tooltip; parameter validation panel with five parameter rows and generation-time snapshot; parameter validation bug fix confirming diary generation correctness). See Section 9.23.
+- **Phase 6 Tab 3 Explainability:** March 2026 (collapsible case-crossover explanation; detection verdict banner with three variants; column header tooltips on Odds Ratio, Confidence, U, V, and Protected Safe; per-row plain English summaries; ranking explanation paragraph; collapsible detection method explainer). See Section 9.24.
+- **Phase 6 Tab 4 Explainability:** March 2026 (how-recommendations-work explanation; per-card evidence text; excluded ingredients panel explanations; explicit preference rank display on promoted cards; Similarity label; two distinct no-substitutes messages by cause; styled inline validation message replacing alert()). See Section 9.25.
 
 ---
 
@@ -1489,6 +1653,13 @@ PIPELINE_CONFIG = PipelineConfig(
 ```
 
 **Optimal test parameters:** 60 days, 70% effect, 4% baseline, 35% exposure.
+
+**Tab 2 current state:** Unified chronological timeline (`renderTimeline` in `main.js`). Symptoms carry `triggering_meal_id` and `is_trigger_caused` fields set in `diary_generator.py`. Case/control classification uses the hazard window value snapshotted at generation time in `_generationSnapshot`. Trigger ingredient highlighting uses the same snapshot. The parameter validation panel reads from `_generationSnapshot` and must not be shown when the snapshot is null. The Trigger Effect Strength denominator counts meals from the meals array (`meals.filter(m => m.ingredients.includes(snap.selected_trigger))`), not from the symptoms array.
+
+**Key frontend state objects:**
+- `_generationSnapshot` — parameter values captured at generation time for the parameter validation panel; cleared on reset and regeneration
+- `_detectionSummary` — detection results for the verdict banner and co-occurrence penalty computation
+- `_cooccurrenceRatios` — per-ingredient co-occurrence ratios against HIGH confidence triggers, computed after detection
 
 **Run the app:** `cd backend && python app.py` → access at `http://127.0.0.1:5001`
 

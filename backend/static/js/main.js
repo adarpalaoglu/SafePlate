@@ -313,6 +313,7 @@ document.addEventListener("DOMContentLoaded", () => {
         _detectionGroundTruth = null;
         _detectionSummary = null;
         _cooccurrenceRatios = null;
+        _generationSnapshot = null;
 
         // Hide diary narrative panel so stale text is not visible during regeneration
         const narrativePanel = document.getElementById("diary-narrative");
@@ -366,6 +367,16 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.status === "success") {
                 statusEl.className = "status-message success";
                 statusEl.textContent = `Generated ${data.n_meals} meals and ${data.n_symptoms} symptoms`;
+
+                // Snapshot parameters at generation time so the validation panel is stable
+                _generationSnapshot = {
+                    trigger_exposure_rate: parseFloat(sliders.trigger_exposure.el.value),
+                    trigger_effect_strength: parseFloat(sliders.trigger_effect.el.value),
+                    baseline_symptom_rate: parseFloat(sliders.baseline_rate.el.value),
+                    hazard_window_hours: parseInt(sliders.hazard_window.el.value),
+                    diary_length_days: parseInt(sliders.n_days.el.value),
+                    selected_trigger: selectedTrigger,
+                };
 
                 // Populate diary narrative panel
                 const triggerMeals = Math.round(data.n_meals * payload.trigger_exposure_rate);
@@ -454,6 +465,7 @@ document.addEventListener("DOMContentLoaded", () => {
             _detectionGroundTruth = null;
             _detectionSummary = null;
             _cooccurrenceRatios = null;
+            _generationSnapshot = null;
 
             // Hide and clear diary narrative panel
             const narrativePanel = document.getElementById("diary-narrative");
@@ -497,10 +509,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const narrative = document.getElementById("diary-narrative");
             const timeline = document.getElementById("diary-timeline");
 
+            const validationPanel = document.getElementById("param-validation-panel");
+
             if (data.status === "no_data") {
                 emptyState.style.display = "";
                 summary.style.display = "none";
                 narrative.style.display = "none";
+                if (validationPanel) validationPanel.style.display = "none";
                 timeline.style.display = "none";
                 return;
             }
@@ -515,10 +530,99 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("summary-symptoms").textContent = data.summary.n_symptoms;
             document.getElementById("summary-days").textContent = data.summary.n_days;
 
+            renderParamValidationPanel(data.meals, data.symptoms);
             renderTimeline(data.meals, data.symptoms);
         } catch (err) {
             console.error("Failed to load diary data:", err);
         }
+    }
+
+    function renderParamValidationPanel(meals, symptoms) {
+        const panel = document.getElementById("param-validation-panel");
+        if (!panel) return;
+
+        if (!_generationSnapshot) {
+            panel.style.display = "none";
+            return;
+        }
+
+        const snap = _generationSnapshot;
+
+        // Compute actual diary stats
+        const totalMeals = meals.length;
+        const totalSymptoms = symptoms.length;
+
+        const triggerMealCount = meals.filter(
+            (m) => m.ingredients && m.ingredients.includes(snap.selected_trigger)
+        ).length;
+        const triggerCausedSymptoms = symptoms.filter((s) => s.is_trigger_caused).length;
+        const bgSymptoms = symptoms.filter((s) => !s.is_trigger_caused).length;
+
+        const actualExposurePct = totalMeals > 0 ? (triggerMealCount / totalMeals * 100) : 0;
+        const bgPct = totalSymptoms > 0 ? (bgSymptoms / totalSymptoms * 100) : 0;
+        const mealsPerDay = snap.diary_length_days > 0 ? (totalMeals / snap.diary_length_days) : 0;
+
+        const setExposurePct = snap.trigger_exposure_rate != null ? snap.trigger_exposure_rate : null;
+        const setEffectPct = snap.trigger_effect_strength != null ? snap.trigger_effect_strength : null;
+        const setBgPct = snap.baseline_symptom_rate != null ? snap.baseline_symptom_rate : null;
+        const setHazard = snap.hazard_window_hours != null ? snap.hazard_window_hours : null;
+        const setDays = snap.diary_length_days != null ? snap.diary_length_days : null;
+
+        function fmt(val, suffix) {
+            return val != null ? `${val}${suffix}` : "Not recorded";
+        }
+
+        // Deviation notes (reassuring tone, no warning colours)
+        const exposureDevNote = (setExposurePct != null && Math.abs(actualExposurePct - setExposurePct) > 5)
+            ? '<p class="pvp-deviation-note">Small differences between the set rate and actual rate are normal due to random variation in diary generation.</p>'
+            : "";
+
+        const actualEffectPct = triggerMealCount > 0 ? (triggerCausedSymptoms / triggerMealCount * 100) : 0;
+        const effectDevNote = (setEffectPct != null && Math.abs(actualEffectPct - setEffectPct) > 10)
+            ? '<p class="pvp-deviation-note">Small differences between the set effect strength and actual symptom rate are normal due to random variation in diary generation.</p>'
+            : "";
+
+        panel.innerHTML = `
+            <h3 class="pvp-title">How Your Parameters Shaped This Diary</h3>
+            <div class="pvp-table">
+                <div class="pvp-header">
+                    <span class="pvp-col pvp-col-name">Parameter</span>
+                    <span class="pvp-col pvp-col-set">What you set</span>
+                    <span class="pvp-col pvp-col-actual">What was generated</span>
+                </div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Trigger Exposure Rate</span>
+                    <span class="pvp-col pvp-col-set">${fmt(setExposurePct, "%")}</span>
+                    <span class="pvp-col pvp-col-actual">${totalMeals === 0 ? "No meals were found in this diary." : `${triggerMealCount} out of ${totalMeals} meals contained ${snap.selected_trigger || "the trigger"} (${actualExposurePct.toFixed(1)}%)`}</span>
+                </div>
+                <div class="pvp-explanation">This controls how often the trigger ingredient appeared in your meals. A higher rate gives the detection algorithm more data to work with.${exposureDevNote}</div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Trigger Effect Strength</span>
+                    <span class="pvp-col pvp-col-set">${fmt(setEffectPct, "%")}</span>
+                    <span class="pvp-col pvp-col-actual">${triggerMealCount === 0 ? "No trigger meals were found in this diary." : `${triggerCausedSymptoms} out of ${triggerMealCount} trigger meals were followed by a symptom (${(triggerCausedSymptoms / triggerMealCount * 100).toFixed(1)}%)`}</span>
+                </div>
+                <div class="pvp-explanation">This controls how reliably the trigger ingredient caused a symptom. At 100% every trigger meal would produce a symptom. At 0% the trigger would never cause symptoms.${effectDevNote}</div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Background Symptom Rate</span>
+                    <span class="pvp-col pvp-col-set">${fmt(setBgPct, "%")}</span>
+                    <span class="pvp-col pvp-col-actual">${bgSymptoms} background symptoms out of ${totalSymptoms} total symptoms (${bgPct.toFixed(1)}%)</span>
+                </div>
+                <div class="pvp-explanation">This controls how often symptoms occurred independently of the trigger. Higher background noise makes the trigger harder to detect because symptoms appear even without trigger exposure.</div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Hazard Window</span>
+                    <span class="pvp-col pvp-col-set">${fmt(setHazard, " hours")}</span>
+                    <span class="pvp-col pvp-col-actual">Symptoms were tracked for up to ${setHazard != null ? setHazard : "?"} hours after each meal</span>
+                </div>
+                <div class="pvp-explanation">This is the time window after a meal during which a symptom is considered potentially linked to that meal. The detection algorithm uses this same window when analysing your diary.</div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Diary Length</span>
+                    <span class="pvp-col pvp-col-set">${fmt(setDays, " days")}</span>
+                    <span class="pvp-col pvp-col-actual">${totalMeals} meals across ${setDays != null ? setDays : "?"} days, averaging ${mealsPerDay.toFixed(1)} meals per day</span>
+                </div>
+                <div class="pvp-explanation">Longer diaries give the algorithm more observations, which generally improves detection reliability.</div>
+            </div>`;
+
+        panel.style.display = "";
     }
 
     function renderTimeline(meals, symptoms) {
@@ -595,11 +699,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 const meal = event.data;
                 const isTrigger = event.type === "trigger-meal";
                 const isCase = isCaseMeal(meal);
-                const tags = meal.ingredients.map((ing) => `<span class="ingredient-tag">${ing}</span>`).join("");
+                const snapTriggerLower = _generationSnapshot ? _generationSnapshot.selected_trigger.toLowerCase() : null;
+                const hasTriggerIng = snapTriggerLower && meal.ingredients.some((ing) => ing.toLowerCase() === snapTriggerLower);
+                const tags = meal.ingredients.map((ing) => {
+                    const isT = snapTriggerLower && ing.toLowerCase() === snapTriggerLower;
+                    return isT
+                        ? `<span class="ingredient-tag ingredient-tag-trigger">${ing}</span>`
+                        : `<span class="ingredient-tag">${ing}</span>`;
+                }).join("");
                 const mealLabel = meal.recipe_name ? `Meal #${event.mealNum}: ${meal.recipe_name}` : `Meal #${event.mealNum}`;
                 const pillClass = isCase ? "meal-case-pill-case" : "meal-case-pill-control";
                 const pillText = isCase ? "Case meal" : "Control meal";
                 const pillTooltip = isCase ? caseTooltipText : controlTooltipText;
+                const triggerTooltip = hasTriggerIng
+                    ? `This meal contained ${_generationSnapshot.selected_trigger}, the hidden trigger ingredient you selected in Tab 1. The detection algorithm will analyse whether meals containing this ingredient were disproportionately followed by symptoms.`
+                    : "";
+                const triggerIndicator = hasTriggerIng
+                    ? `<span class="tl-trigger-indicator" data-case-tooltip="${triggerTooltip}">&#9888; Contains trigger</span>`
+                    : "";
                 entry.className = "tl-entry";
                 entry.innerHTML = `
                     <div class="tl-left">
@@ -608,7 +725,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                     <div class="tl-card${isTrigger ? " tl-card-trigger-meal" : ""}">
                         <span class="meal-case-pill ${pillClass}" data-case-tooltip="${pillTooltip}">${pillText}</span>
-                        <div class="meal-timestamp">${formatTimestamp(meal.timestamp)}</div>
+                        <div class="meal-timestamp">${formatTimestamp(meal.timestamp)}${triggerIndicator}</div>
                         <div class="meal-id">${mealLabel}</div>
                         <div class="meal-ingredients">${tags}</div>
                     </div>`;
@@ -713,6 +830,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let _detectionGroundTruth = null;
     let _detectionSummary = null;
     let _cooccurrenceRatios = null;
+    let _generationSnapshot = null;
 
     async function loadDetectionResults() {
         try {
@@ -1483,7 +1601,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!popup || !tlContainer) return;
 
         tlContainer.addEventListener("mouseover", (e) => {
-            const pill = e.target.closest(".meal-case-pill");
+            const pill = e.target.closest(".meal-case-pill, .tl-trigger-indicator");
             if (!pill) return;
             const text = pill.dataset.caseTooltip;
             if (!text) return;
@@ -1499,7 +1617,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         tlContainer.addEventListener("mouseout", (e) => {
-            const pill = e.target.closest(".meal-case-pill");
+            const pill = e.target.closest(".meal-case-pill, .tl-trigger-indicator");
             if (pill && !pill.contains(e.relatedTarget)) {
                 popup.classList.remove("visible");
             }
@@ -1542,6 +1660,7 @@ document.addEventListener("DOMContentLoaded", () => {
             _detectionGroundTruth = null;
             _detectionSummary = null;
             _cooccurrenceRatios = null;
+            _generationSnapshot = null;
             statusEl.className = "status-message";
             statusEl.textContent = "";
         }
