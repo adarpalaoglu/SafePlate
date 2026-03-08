@@ -515,37 +515,116 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("summary-symptoms").textContent = data.summary.n_symptoms;
             document.getElementById("summary-days").textContent = data.summary.n_days;
 
-            renderMeals(data.meals);
-            renderSymptoms(data.symptoms);
+            renderTimeline(data.meals, data.symptoms);
         } catch (err) {
             console.error("Failed to load diary data:", err);
         }
     }
 
-    function renderMeals(meals) {
-        const list = document.getElementById("meals-list");
-        list.innerHTML = "";
+    function renderTimeline(meals, symptoms) {
+        const container = document.getElementById("diary-timeline-entries");
+        container.innerHTML = "";
 
-        meals.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        if (meals.length === 0 && symptoms.length === 0) {
+            container.innerHTML = '<p class="empty-state" style="padding: 24px;">No diary entries to display.</p>';
+            return;
+        }
 
-        meals.forEach((meal, index) => {
-            const tags = meal.ingredients
-                .map((ing) => `<span class="ingredient-tag">${ing}</span>`)
-                .join("");
+        // Group trigger symptoms by triggering_meal_id; collect background symptoms
+        const symptomsByMeal = {};
+        const bgSymptoms = [];
+        symptoms.forEach((s) => {
+            if (s.triggering_meal_id != null) {
+                if (!symptomsByMeal[s.triggering_meal_id]) symptomsByMeal[s.triggering_meal_id] = [];
+                symptomsByMeal[s.triggering_meal_id].push(s);
+            } else {
+                bgSymptoms.push(s);
+            }
+        });
 
-            let mealLabel = `Meal #${index}`;
-            if (meal.recipe_name) {
-                mealLabel += `: ${meal.recipe_name}`;
+        const sortedMeals = [...meals].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        const sortedBg = [...bgSymptoms].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+        // Build meal lookup by meal_id for symptom card rendering
+        const mealById = {};
+        meals.forEach((m) => { mealById[m.meal_id] = m; });
+
+        // Build interleaved events array
+        const events = [];
+        let bgIdx = 0;
+        sortedMeals.forEach((meal, mealNum) => {
+            while (bgIdx < sortedBg.length && sortedBg[bgIdx].timestamp < meal.timestamp) {
+                events.push({ type: "bg-symptom", data: sortedBg[bgIdx] });
+                bgIdx++;
+            }
+            const linked = (symptomsByMeal[meal.meal_id] || []).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+            events.push({ type: linked.length > 0 ? "trigger-meal" : "meal", data: meal, mealNum });
+            linked.forEach((s) => events.push({ type: "trigger-symptom", data: s }));
+        });
+        while (bgIdx < sortedBg.length) {
+            events.push({ type: "bg-symptom", data: sortedBg[bgIdx] });
+            bgIdx++;
+        }
+
+        events.forEach((event, i) => {
+            const isLast = i === events.length - 1;
+            const entry = document.createElement("div");
+
+            if (event.type === "meal" || event.type === "trigger-meal") {
+                const meal = event.data;
+                const isTrigger = event.type === "trigger-meal";
+                const tags = meal.ingredients.map((ing) => `<span class="ingredient-tag">${ing}</span>`).join("");
+                const mealLabel = meal.recipe_name ? `Meal #${event.mealNum}: ${meal.recipe_name}` : `Meal #${event.mealNum}`;
+                entry.className = "tl-entry";
+                entry.innerHTML = `
+                    <div class="tl-left">
+                        <div class="tl-dot ${isTrigger ? "tl-dot-trigger-meal" : "tl-dot-meal"}"></div>
+                        ${!isLast ? `<div class="tl-vline${isTrigger ? " tl-vline-dashed" : ""}"></div>` : ""}
+                    </div>
+                    <div class="tl-card${isTrigger ? " tl-card-trigger-meal" : ""}">
+                        <div class="meal-timestamp">${formatTimestamp(meal.timestamp)}</div>
+                        <div class="meal-id">${mealLabel}</div>
+                        <div class="meal-ingredients">${tags}</div>
+                    </div>`;
+            } else if (event.type === "trigger-symptom") {
+                const s = event.data;
+                const linkedMeal = mealById[s.triggering_meal_id];
+                let mealNote;
+                if (!linkedMeal) {
+                    mealNote = "Occurred after a meal in the diary.";
+                } else {
+                    const recipeName = linkedMeal.recipe_name || "a meal";
+                    const diffHours = (new Date(s.timestamp) - new Date(linkedMeal.timestamp)) / 3600000;
+                    const timeStr = diffHours < 0.5 ? "shortly" : `${diffHours.toFixed(1)} hours`;
+                    mealNote = `Occurred ${timeStr} after ${recipeName}.`;
+                }
+                entry.className = "tl-entry tl-entry-trigger-symptom";
+                entry.innerHTML = `
+                    <div class="tl-left">
+                        <div class="tl-dot tl-dot-trigger-symptom"></div>
+                        ${!isLast ? '<div class="tl-vline"></div>' : ""}
+                    </div>
+                    <div class="tl-card tl-card-trigger-symptom">
+                        <div class="symptom-timestamp">${formatTimestamp(s.timestamp)}</div>
+                        <div class="symptom-id"><span class="symptom-icon">&#9888;&#65039;</span>Symptom #${s.symptom_id}</div>
+                        <div class="symptom-meal-note">${mealNote}</div>
+                    </div>`;
+            } else {
+                const s = event.data;
+                entry.className = "tl-entry";
+                entry.innerHTML = `
+                    <div class="tl-left">
+                        <div class="tl-dot tl-dot-bg-symptom"></div>
+                        ${!isLast ? '<div class="tl-vline"></div>' : ""}
+                    </div>
+                    <div class="tl-card tl-card-bg-symptom">
+                        <div class="symptom-timestamp">${formatTimestamp(s.timestamp)}</div>
+                        <div class="symptom-id" style="color: #374151;"><span class="symptom-icon" style="color: #6B7C93;">&#9432;</span>Symptom #${s.symptom_id}</div>
+                        <div class="symptom-meal-note">Not linked to a specific meal. This symptom occurred independently of the trigger ingredient.</div>
+                    </div>`;
             }
 
-            const card = document.createElement("div");
-            card.className = "meal-card";
-            card.innerHTML = `
-                <div class="meal-timestamp">${formatTimestamp(meal.timestamp)}</div>
-                <div class="meal-id">${mealLabel}</div>
-                <div class="meal-ingredients">${tags}</div>
-            `;
-            list.appendChild(card);
+            container.appendChild(entry);
         });
     }
 
@@ -1168,31 +1247,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         getRecommendationsFor(ingredient);
     });
-
-    function renderSymptoms(symptoms) {
-        const list = document.getElementById("symptoms-list");
-        list.innerHTML = "";
-
-        if (symptoms.length === 0) {
-            list.innerHTML = '<p class="empty-state" style="padding: 24px;">No symptoms recorded in this diary</p>';
-            return;
-        }
-
-        symptoms.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-        symptoms.forEach((symptom, index) => {
-            const card = document.createElement("div");
-            card.className = "symptom-card";
-            card.innerHTML = `
-                <div class="symptom-timestamp">${formatTimestamp(symptom.timestamp)}</div>
-                <div class="symptom-id">
-                    <span class="symptom-icon">&#9888;&#65039;</span>
-                    Symptom #${index}
-                </div>
-            `;
-            list.appendChild(card);
-        });
-    }
 
     // --- Tab 5: Preferences ---
     async function loadPreferenceInterface() {

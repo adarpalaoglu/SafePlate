@@ -236,15 +236,13 @@
                     <p id="diary-narrative-text"></p>
                 </div>
 
-                <div id="diary-timeline" class="timeline-container" style="display: none;">
-                    <div class="timeline-column meals-column">
-                        <h3>Meals</h3>
-                        <div id="meals-list" class="timeline-list"></div>
+                <div id="diary-timeline" style="display: none;">
+                    <div class="diary-tl-legend">
+                        <span class="tl-legend-item"><span class="tl-legend-swatch tl-swatch-meal"></span>Meal</span>
+                        <span class="tl-legend-item"><span class="tl-legend-swatch tl-swatch-trigger-meal"></span>Meal that triggered a symptom</span>
+                        <span class="tl-legend-item"><span class="tl-legend-bg-icon">&#9888;</span>Background symptom</span>
                     </div>
-                    <div class="timeline-column symptoms-column">
-                        <h3>Symptoms</h3>
-                        <div id="symptoms-list" class="timeline-list"></div>
-                    </div>
+                    <div id="diary-timeline-entries" class="diary-tl-entries"></div>
                 </div>
             </div>
 

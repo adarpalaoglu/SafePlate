@@ -373,6 +373,8 @@ class DiaryGenerator:
                     "timestamp": symptom_time,
                     "symptom_id": symptom_id,
                     "episode_id": symptom_id,  # Each symptom is its own episode
+                    "triggering_meal_id": meal["meal_id"] if has_trigger else None,
+                    "is_trigger_caused": has_trigger,
                 })
                 symptom_id += 1
 

@@ -144,6 +144,8 @@ def generate_diary():
                 "timestamp": symptom["timestamp"].isoformat(),
                 "symptom_id": symptom["symptom_id"],
                 "episode_id": symptom["episode_id"],
+                "triggering_meal_id": symptom.get("triggering_meal_id"),
+                "is_trigger_caused": symptom.get("is_trigger_caused", False),
             })
 
         global _diary_meals, _diary_symptoms, _diary_config, _selected_trigger
