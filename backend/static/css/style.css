@@ -503,6 +503,38 @@ input[type="range"]::-moz-range-thumb {
     padding: 14px 16px;
     box-shadow: var(--card-shadow);
     margin: 8px 0 8px 12px;
+    position: relative;
+}
+
+.meal-case-pill {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 11px;
+    font-weight: 400;
+    padding: 2px 8px;
+    border-radius: 12px;
+    cursor: default;
+    white-space: nowrap;
+}
+
+.meal-case-pill-case {
+    background: rgba(201, 135, 107, 0.15);
+    color: #C9876B;
+    border: 1px solid rgba(201, 135, 107, 0.4);
+}
+
+.meal-case-pill-control {
+    background: rgba(124, 152, 133, 0.15);
+    color: #7C9885;
+    border: 1px solid rgba(124, 152, 133, 0.4);
+}
+
+.tl-legend-pill {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 400;
 }
 
 .tl-card-trigger-meal {

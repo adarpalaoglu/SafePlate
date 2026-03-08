@@ -530,6 +530,27 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        // Snapshot hazard window at render time so it does not change if slider is adjusted later
+        const hazardWindowEl = sliders.hazard_window ? sliders.hazard_window.el : null;
+        let hazardWindowHours = hazardWindowEl ? parseInt(hazardWindowEl.value) : NaN;
+        if (isNaN(hazardWindowHours) || hazardWindowHours <= 0) {
+            console.warn("renderTimeline: hazard window slider not available, falling back to 12 hours");
+            hazardWindowHours = 12;
+        }
+        const hazardWindowMs = hazardWindowHours * 3600000;
+
+        // Classify each meal as case or control based on symptom proximity
+        const caseTooltipText = "This meal was followed by a symptom within the hazard window. In the case-crossover analysis, meals like this are treated as case observations. Ingredients in case meals are compared against ingredients in control meals to identify suspicious patterns.";
+        const controlTooltipText = "This meal was not followed by any symptom within the hazard window. In the case-crossover analysis, meals like this are treated as control observations. They form the baseline that case meals are compared against.";
+
+        function isCaseMeal(meal) {
+            const mealMs = new Date(meal.timestamp).getTime();
+            return symptoms.some((s) => {
+                const sMs = new Date(s.timestamp).getTime();
+                return sMs >= mealMs && sMs <= mealMs + hazardWindowMs;
+            });
+        }
+
         // Group trigger symptoms by triggering_meal_id; collect background symptoms
         const symptomsByMeal = {};
         const bgSymptoms = [];
@@ -573,8 +594,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (event.type === "meal" || event.type === "trigger-meal") {
                 const meal = event.data;
                 const isTrigger = event.type === "trigger-meal";
+                const isCase = isCaseMeal(meal);
                 const tags = meal.ingredients.map((ing) => `<span class="ingredient-tag">${ing}</span>`).join("");
                 const mealLabel = meal.recipe_name ? `Meal #${event.mealNum}: ${meal.recipe_name}` : `Meal #${event.mealNum}`;
+                const pillClass = isCase ? "meal-case-pill-case" : "meal-case-pill-control";
+                const pillText = isCase ? "Case meal" : "Control meal";
+                const pillTooltip = isCase ? caseTooltipText : controlTooltipText;
                 entry.className = "tl-entry";
                 entry.innerHTML = `
                     <div class="tl-left">
@@ -582,6 +607,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         ${!isLast ? `<div class="tl-vline${isTrigger ? " tl-vline-dashed" : ""}"></div>` : ""}
                     </div>
                     <div class="tl-card${isTrigger ? " tl-card-trigger-meal" : ""}">
+                        <span class="meal-case-pill ${pillClass}" data-case-tooltip="${pillTooltip}">${pillText}</span>
                         <div class="meal-timestamp">${formatTimestamp(meal.timestamp)}</div>
                         <div class="meal-id">${mealLabel}</div>
                         <div class="meal-ingredients">${tags}</div>
@@ -1447,6 +1473,36 @@ document.addEventListener("DOMContentLoaded", () => {
         document.addEventListener("click", () => {
             popup.classList.remove("visible");
             popup._anchor = null;
+        });
+    }());
+
+    // --- Case/Control Pill Tooltips (delegated, for dynamically rendered timeline cards) ---
+    (function () {
+        const popup = document.getElementById("col-tooltip-popup");
+        const tlContainer = document.getElementById("diary-timeline");
+        if (!popup || !tlContainer) return;
+
+        tlContainer.addEventListener("mouseover", (e) => {
+            const pill = e.target.closest(".meal-case-pill");
+            if (!pill) return;
+            const text = pill.dataset.caseTooltip;
+            if (!text) return;
+            popup.textContent = text;
+            popup.classList.add("visible");
+            const rect = pill.getBoundingClientRect();
+            const pw = 280;
+            let left = rect.left + rect.width / 2 - pw / 2;
+            left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+            popup.style.width = pw + "px";
+            popup.style.left = left + "px";
+            popup.style.top = (rect.bottom + 8) + "px";
+        });
+
+        tlContainer.addEventListener("mouseout", (e) => {
+            const pill = e.target.closest(".meal-case-pill");
+            if (pill && !pill.contains(e.relatedTarget)) {
+                popup.classList.remove("visible");
+            }
         });
     }());
 
