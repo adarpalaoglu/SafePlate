@@ -515,33 +515,93 @@ input[type="range"]::-moz-range-thumb {
 /* === Unified Timeline === */
 .diary-tl-legend {
     display: flex;
-    gap: 20px;
+    flex-direction: row;
+    gap: 0;
     margin-bottom: 20px;
-    flex-wrap: wrap;
-    align-items: center;
+    background: #fafafa;
+    border: 1px solid var(--light-gray);
+    border-radius: 8px;
+    padding: 14px 18px;
+}
+
+.tl-legend-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+}
+
+.tl-legend-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #9CA3AF;
+}
+
+.tl-legend-group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.tl-legend-divider {
+    width: 1px;
+    background: var(--light-gray);
+    margin: 0 20px;
+    align-self: stretch;
 }
 
 .tl-legend-item {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     font-size: 13px;
-    color: var(--text-light);
+    color: var(--text);
 }
 
-.tl-legend-swatch {
-    width: 12px;
-    height: 12px;
+.tl-legend-item[data-legend-tooltip] {
+    cursor: pointer;
+}
+
+.tl-legend-dot {
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
     flex-shrink: 0;
 }
 
-.tl-swatch-meal { background: var(--sage); }
-.tl-swatch-trigger-meal { background: var(--terracotta); }
+.tl-dot-sage       { background: var(--sage); }
+.tl-dot-terracotta { background: var(--terracotta); }
 
-.tl-legend-bg-icon {
+.tl-legend-sym-icon {
     font-size: 14px;
-    color: #9CA3AF;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.tl-legend-trigger-tag {
+    display: inline-block;
+    background: rgba(201, 135, 107, 0.15);
+    color: #C9876B;
+    border: 1px solid rgba(201, 135, 107, 0.45);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .diary-tl-legend {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .tl-legend-divider {
+        width: 100%;
+        height: 1px;
+        margin: 0;
+    }
 }
 
 .diary-tl-entries {

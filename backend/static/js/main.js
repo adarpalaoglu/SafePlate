@@ -1624,6 +1624,31 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }());
 
+    // --- Legend Item Tooltips ---
+    (function () {
+        const popup = document.getElementById("col-tooltip-popup");
+        if (!popup) return;
+
+        function showLegendTooltip(item) {
+            const text = item.dataset.legendTooltip;
+            if (!text) return;
+            popup.textContent = text;
+            popup.classList.add("visible");
+            const rect = item.getBoundingClientRect();
+            const pw = 240;
+            let left = rect.left + rect.width / 2 - pw / 2;
+            left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+            popup.style.width = pw + "px";
+            popup.style.left = left + "px";
+            popup.style.top = (rect.bottom + 8) + "px";
+        }
+
+        document.querySelectorAll(".tl-legend-item[data-legend-tooltip]").forEach((item) => {
+            item.addEventListener("mouseenter", () => showLegendTooltip(item));
+            item.addEventListener("mouseleave", () => popup.classList.remove("visible"));
+        });
+    }());
+
     // --- Guided Tour ---
     function initTour() {
         if (typeof Shepherd === "undefined") return;

@@ -240,12 +240,24 @@
 
                 <div id="diary-timeline" style="display: none;">
                     <div class="diary-tl-legend">
-                        <span class="tl-legend-item"><span class="tl-legend-swatch tl-swatch-meal"></span>Meal</span>
-                        <span class="tl-legend-item"><span class="tl-legend-swatch tl-swatch-trigger-meal"></span>Meal that triggered a symptom</span>
-                        <span class="tl-legend-item"><span class="ingredient-tag ingredient-tag-trigger">ingredient</span>Contains trigger ingredient</span>
-                        <span class="tl-legend-item"><span class="tl-legend-pill meal-case-pill-case">Case meal</span></span>
-                        <span class="tl-legend-item"><span class="tl-legend-pill meal-case-pill-control">Control meal</span></span>
-                        <span class="tl-legend-item"><span class="tl-legend-bg-icon">&#9432;</span>Background symptom</span>
+                        <div class="tl-legend-group">
+                            <div class="tl-legend-group-label">Meals</div>
+                            <div class="tl-legend-group-items">
+                                <span class="tl-legend-item" data-legend-tooltip="A meal with no linked symptom. Every meal is analysed regardless of outcome."><span class="tl-legend-dot tl-dot-sage"></span>Normal meal</span>
+                                <span class="tl-legend-item" data-legend-tooltip="This meal contained the trigger ingredient and was followed by a symptom within the hazard window."><span class="tl-legend-dot tl-dot-terracotta"></span>Meal that triggered a symptom</span>
+                                <span class="tl-legend-item" data-legend-tooltip="This meal included the trigger ingredient set in Tab 1."><span class="tl-legend-trigger-tag">ingredient</span>Contains trigger ingredient</span>
+                                <span class="tl-legend-item" data-legend-tooltip="Followed by a symptom within the hazard window. Used as the case period in the analysis."><span class="tl-legend-pill meal-case-pill-case">Case meal</span></span>
+                                <span class="tl-legend-item" data-legend-tooltip="Not followed by any symptom within the hazard window. Used as the baseline in the analysis."><span class="tl-legend-pill meal-case-pill-control">Control meal</span></span>
+                            </div>
+                        </div>
+                        <div class="tl-legend-divider"></div>
+                        <div class="tl-legend-group">
+                            <div class="tl-legend-group-label">Symptoms</div>
+                            <div class="tl-legend-group-items">
+                                <span class="tl-legend-item" data-legend-tooltip="Caused by the trigger ingredient in the simulation. Shown below the meal that triggered it."><span class="tl-legend-sym-icon">&#9888;&#65039;</span>Trigger symptom</span>
+                                <span class="tl-legend-item" data-legend-tooltip="Occurred independently of the trigger. Represents baseline symptom noise in the simulation."><span class="tl-legend-sym-icon" style="color: #6B7C93;">&#9432;</span>Background symptom</span>
+                            </div>
+                        </div>
                     </div>
                     <div id="diary-timeline-entries" class="diary-tl-entries"></div>
                 </div>
