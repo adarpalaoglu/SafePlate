@@ -1,4 +1,6 @@
-/* === Reset & Base === */
+/* SafePlate test lab UI styles */
+
+/* Reset & Base */
 *,
 *::before,
 *::after {
@@ -7,6 +9,7 @@
     box-sizing: border-box;
 }
 
+/* Design tokens */
 :root {
     --sage: #7C9885;
     --sage-dark: #6A8573;
@@ -27,14 +30,14 @@ body {
     line-height: 1.6;
 }
 
-/* === Layout === */
+/* Layout */
 .container {
     max-width: 1200px;
     margin: 0 auto;
     padding: 24px;
 }
 
-/* === Header === */
+/* Header */
 header {
     display: flex;
     justify-content: space-between;
@@ -48,7 +51,7 @@ header h1 {
     color: var(--sage-dark);
 }
 
-/* === Tabs === */
+/* Tabs */
 .tabs {
     display: flex;
     gap: 4px;
@@ -84,7 +87,7 @@ header h1 {
     cursor: not-allowed;
 }
 
-/* === Tab Content === */
+/* Tab Content */
 .tab-content {
     position: relative;
 }
@@ -121,7 +124,7 @@ header h1 {
     max-width: 680px;
 }
 
-/* === Config Sections === */
+/* Config Sections */
 .config-section {
     margin-bottom: 24px;
 }
@@ -133,7 +136,7 @@ header h1 {
     color: var(--text);
 }
 
-/* === Parameter Groups === */
+/* Parameter Groups */
 .param-group {
     margin-bottom: 16px;
 }
@@ -152,7 +155,7 @@ header h1 {
     color: var(--sage-dark);
 }
 
-/* === Sliders === */
+/* Sliders */
 input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
@@ -185,7 +188,7 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-/* === Advanced Section === */
+/* Advanced Section */
 .advanced-section {
     margin-bottom: 24px;
     border: 1px solid var(--light-gray);
@@ -209,7 +212,7 @@ input[type="range"]::-moz-range-thumb {
     margin-bottom: 16px;
 }
 
-/* === Buttons === */
+/* Buttons */
 .btn-primary,
 .btn-secondary {
     padding: 12px 24px;
@@ -247,7 +250,7 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: 0 2px 6px rgba(212, 165, 116, 0.4);
 }
 
-/* === Status Messages === */
+/* Status Messages */
 .status-message {
     margin-top: 16px;
     padding: 0;
@@ -270,7 +273,7 @@ input[type="range"]::-moz-range-thumb {
     border: 1px solid #FED7D7;
 }
 
-/* === Empty State === */
+/* Empty State */
 .empty-state {
     background: #F7FAFC;
     text-align: center;
@@ -278,7 +281,7 @@ input[type="range"]::-moz-range-thumb {
     border-radius: 8px;
 }
 
-/* === Diary Narrative Panel === */
+/* Diary Narrative Panel */
 .diary-narrative-panel {
     background: rgba(124, 152, 133, 0.07);
     border-left: 3px solid var(--sage);
@@ -299,7 +302,7 @@ input[type="range"]::-moz-range-thumb {
     color: var(--sage-dark);
 }
 
-/* === Parameter Validation Panel === */
+/* Parameter Validation Panel */
 .pvp-panel {
     background: rgba(124, 152, 133, 0.07);
     border: 1px solid rgba(124, 152, 133, 0.25);
@@ -401,7 +404,7 @@ input[type="range"]::-moz-range-thumb {
     .pvp-col-actual::before { content: "Generated: "; color: var(--text-light); font-weight: 400; }
 }
 
-/* === Detection How-To Collapsible === */
+/* Detection How-To Collapsible */
 .detection-howto {
     margin-bottom: 20px;
 }
@@ -471,7 +474,7 @@ input[type="range"]::-moz-range-thumb {
     margin-bottom: 0;
 }
 
-/* === Summary Card === */
+/* Summary Card */
 .summary-card {
     background: #F0F4F1;
     border-radius: 8px;
@@ -512,7 +515,7 @@ input[type="range"]::-moz-range-thumb {
     font-family: Consolas, Monaco, monospace;
 }
 
-/* === Unified Timeline === */
+/* Unified Timeline */
 .diary-tl-legend {
     display: flex;
     flex-direction: row;
@@ -668,6 +671,7 @@ input[type="range"]::-moz-range-thumb {
     position: relative;
 }
 
+/* Case/control pills on timeline cards */
 .meal-case-pill {
     position: absolute;
     top: 10px;
@@ -714,7 +718,7 @@ input[type="range"]::-moz-range-thumb {
     border-left: 3px solid #6B7C93;
 }
 
-/* === Meal Card Inner Elements === */
+/* Meal Card Inner Elements */
 .meal-timestamp {
     font-size: 12px;
     color: #9CA3AF;
@@ -760,7 +764,7 @@ input[type="range"]::-moz-range-thumb {
     white-space: nowrap;
 }
 
-/* === Symptom Card Inner Elements === */
+/* Symptom Card Inner Elements */
 .symptom-timestamp {
     font-size: 12px;
     color: #9CA3AF;
@@ -789,7 +793,7 @@ input[type="range"]::-moz-range-thumb {
     font-style: italic;
 }
 
-/* === Results Table === */
+/* Results Table */
 .results-table-container {
     margin-top: 24px;
 }
@@ -902,7 +906,7 @@ input[type="range"]::-moz-range-thumb {
     margin-left: 4px;
 }
 
-/* === Trigger Configuration === */
+/* Trigger Configuration */
 .trigger-config {
     margin-top: 24px;
     padding-top: 24px;
@@ -1002,6 +1006,7 @@ input[type="range"]::-moz-range-thumb {
     color: var(--text);
 }
 
+/* Shared help text */
 .help-text {
     font-size: 13px;
     color: #9CA3AF;
@@ -1009,7 +1014,7 @@ input[type="range"]::-moz-range-thumb {
     line-height: 1.4;
 }
 
-/* === Ground Truth Card === */
+/* Ground Truth Card */
 .ground-truth-card {
     background: var(--bg);
     border: none;
@@ -1036,7 +1041,7 @@ input[type="range"]::-moz-range-thumb {
     font-size: 16px;
 }
 
-/* === Ground Truth Row === */
+/* Ground Truth Row */
 .ground-truth-row {
     background-color: #E8F5E9;
     border-left: 4px solid #4CAF50;
@@ -1046,7 +1051,7 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 700;
 }
 
-/* === Trigger Pills === */
+/* Trigger Pills */
 .trigger-shortcuts-section {
     margin-bottom: 32px;
     padding: 20px;
@@ -1084,7 +1089,7 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
-/* === Info Box === */
+/* Info Box */
 .info-box {
     display: flex;
     gap: 12px;
@@ -1113,7 +1118,7 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 600;
 }
 
-/* === Parameter Tooltips === */
+/* Parameter Tooltips */
 .param-group {
     position: relative;
 }
@@ -1177,7 +1182,7 @@ input[type="range"]::-moz-range-thumb {
     font-style: italic;
 }
 
-/* === Preset Section === */
+/* Preset Section */
 .preset-section {
     margin-bottom: 20px;
     padding: 16px;
@@ -1238,7 +1243,7 @@ input[type="range"]::-moz-range-thumb {
     display: block;
 }
 
-/* === Search Section === */
+/* Search Section */
 .search-section {
     margin-bottom: 32px;
 }
@@ -1260,7 +1265,7 @@ input[type="range"]::-moz-range-thumb {
     flex: 1;
 }
 
-/* === Recommendations Results === */
+/* Recommendations Results */
 .query-header {
     margin-bottom: 24px;
     padding-bottom: 16px;
@@ -1332,7 +1337,7 @@ input[type="range"]::-moz-range-thumb {
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* === Excluded List === */
+/* Excluded List */
 .excluded-list {
     background: #FEF3E2;
     border: 1px solid var(--terracotta);
@@ -1376,7 +1381,7 @@ input[type="range"]::-moz-range-thumb {
     font-size: 14px;
 }
 
-/* === Filter Toggle === */
+/* Filter Toggle */
 .filter-toggle {
     display: flex;
     gap: 12px;
@@ -1423,7 +1428,7 @@ input[type="range"]::-moz-range-thumb {
     font-style: italic;
 }
 
-/* === Same-Group Warning === */
+/* Same-Group Warning */
 .same-group-warning {
     display: flex;
     align-items: center;
@@ -1447,7 +1452,7 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 600;
 }
 
-/* === Recommendation Explanations === */
+/* Recommendation Explanations */
 .recommendation-explanation {
     margin-top: 8px;
     padding-top: 8px;
@@ -1500,7 +1505,7 @@ input[type="range"]::-moz-range-thumb {
     font-size: 14px;
 }
 
-/* === Tab 5: Preferences === */
+/* Tab 5: Preferences */
 .pref-header {
     margin-bottom: 24px;
 }
@@ -1600,7 +1605,7 @@ input[type="range"]::-moz-range-thumb {
     background: #F7FAFC;
 }
 
-/* === Column Header Info Icons === */
+/* Column Header Info Icons */
 .col-info-icon {
     display: inline-flex;
     align-items: center;
@@ -1627,7 +1632,7 @@ input[type="range"]::-moz-range-thumb {
     background: var(--sage-dark);
 }
 
-/* === Column Tooltip Floating Popup === */
+/* Column Tooltip Floating Popup */
 .col-tooltip-popup {
     display: none;
     position: fixed;
@@ -1649,7 +1654,7 @@ input[type="range"]::-moz-range-thumb {
     display: block;
 }
 
-/* === Verdict Banner === */
+/* Verdict Banner */
 .verdict-banner {
     border-radius: 10px;
     padding: 20px 24px;
@@ -1707,7 +1712,7 @@ input[type="range"]::-moz-range-thumb {
     background: #E8F5E9;
 }
 
-/* Success variant uses a light background — override white text to stay readable */
+/* Success variant uses a light background - override white text to stay readable */
 .verdict-success .verdict-headline {
     color: #1b5e2a;
 }
@@ -1728,7 +1733,7 @@ input[type="range"]::-moz-range-thumb {
     background: #FAF0E8;
 }
 
-/* Partial variant uses a light background — override white text to stay readable */
+/* Partial variant uses a light background - override white text to stay readable */
 .verdict-partial .verdict-headline {
     color: #7a3510;
 }
@@ -1753,7 +1758,7 @@ input[type="range"]::-moz-range-thumb {
     background: #9AA0A6;
 }
 
-/* === Per-row Ingredient Summary === */
+/* Per-row Ingredient Summary */
 .ing-summary {
     font-size: 12px;
     color: var(--text-light);
@@ -1762,7 +1767,7 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 400;
 }
 
-/* === Tour Help Button === */
+/* Tour Help Button */
 #tour-help-btn {
     position: fixed;
     bottom: 24px;
@@ -1790,7 +1795,7 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 }
 
-/* === Shepherd.js Theme Overrides === */
+/* Shepherd.js Theme Overrides */
 .shepherd-element {
     max-width: 360px !important;
     border-radius: 12px !important;
@@ -1872,7 +1877,7 @@ input[type="range"]::-moz-range-thumb {
     z-index: 9997 !important;
 }
 
-/* Welcome step — wider, vertically centred modal */
+/* Welcome step - wider, vertically centred modal */
 .shepherd-element.shepherd-welcome {
     width: 680px !important;
     max-width: 680px !important;
@@ -1938,7 +1943,7 @@ input[type="range"]::-moz-range-thumb {
     justify-self: center;
 }
 
-/* === Responsive === */
+/* Responsive: tablet and below */
 @media (max-width: 768px) {
     .summary-stats {
         grid-template-columns: repeat(2, 1fr);
@@ -1953,6 +1958,7 @@ input[type="range"]::-moz-range-thumb {
     }
 }
 
+/* Responsive: welcome modal on small screens */
 @media (max-width: 720px) {
     .shepherd-element.shepherd-welcome {
         width: calc(100vw - 32px) !important;
@@ -1969,6 +1975,7 @@ input[type="range"]::-moz-range-thumb {
     }
 }
 
+/* Responsive: verdict banner stacks on mobile */
 @media (max-width: 600px) {
     .verdict-banner {
         flex-direction: column;

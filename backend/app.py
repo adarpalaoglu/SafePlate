@@ -1,4 +1,4 @@
-"""SafePlate Test Lab - Flask web interface for trigger detection evaluation."""
+"""SafePlate Test Lab - Flask entry point for trigger detection evaluation."""
 
 import math
 import re
@@ -35,7 +35,7 @@ INGREDIENT_POOL = [
 ]
 
 DEFAULT_TRIGGER = "cheddar cheese"
-NEGATIVE_CONTROL = "olive oil"
+NEGATIVE_CONTROL = "olive oil"  # known non-trigger, used as baseline in generation
 
 # Initialize pipeline components once at startup
 EMBEDDING_LOADER = EmbeddingLoader()
@@ -64,9 +64,9 @@ PREFERENCE_ENGINE = PreferenceAwareRecommendationEngine(
     user_pref_store=PREFERENCE_STORE,
 )
 
-# Module-level storage for diary data (single-user test lab).
-# Flask session cookies have a ~4 KB limit. Real-recipe meals easily exceed
-# this, causing silent data loss. Module-level variables avoid the limit.
+# Module-level state for the current experiment. This is a single-user test
+# lab so concurrent requests aren't a concern. Flask session cookies cap at
+# ~4KB which real-recipe meals easily exceed, so we store state here instead.
 _diary_meals = None
 _diary_symptoms = None
 _diary_config = None
@@ -100,6 +100,7 @@ def get_all_ingredients():
 
 @app.route("/generate_diary", methods=["POST"])
 def generate_diary():
+    """Build a synthetic diary from the posted config and store it in memory."""
     try:
         data = request.get_json()
 
@@ -128,7 +129,7 @@ def generate_diary():
         meals = generator.generate_meals()
         symptoms = generator.generate_symptoms()
 
-        # Convert datetimes to ISO strings for JSON serialisation
+        # datetime objects aren't JSON-serialisable, so convert to ISO strings
         serialisable_meals = []
         for meal in meals:
             serialisable_meals.append({
@@ -173,12 +174,19 @@ def run_detection():
         return jsonify({"status": "error", "message": "No diary found. Generate a diary first."}), 400
 
     try:
+        # Production detection: raw Haldane-corrected odds ratios, no shrinkage.
+        # Shrinkage (group_aware_trigger_detector.py) was removed here because
+        # recipe ingredient clustering violates its group homogeneity assumption.
+        # ShrinkageResult/FullShrinkageOutput are reused as data containers with
+        # shrinkage-specific fields (weight, mu_g, tau_sq) set to dummy values.
+
         # Collect unique ingredients
         all_ingredients = set()
         for meal in meals:
             all_ingredients.update(meal["ingredients"])
 
-        # Simplified case-crossover: count symptom co-occurrences per ingredient
+        # Simplified co-occurrence count (not the full matched case-crossover with
+        # control windows from the progress report, but effective for synthetic data)
         config = _diary_config or {}
         hazard_window = config.get("hazard_window_hours", 6)
         min_lag = config.get("min_lag_hours", 1)
@@ -195,8 +203,8 @@ def run_detection():
                     if min_lag <= diff_hours <= hazard_window:
                         symptom_count += 1
 
-            U = symptom_count
-            V = max(len(meals_with_ing) - symptom_count, 0)
+            U = symptom_count                              # meals with ingredient followed by symptom
+            V = max(len(meals_with_ing) - symptom_count, 0)  # meals with ingredient, no symptom
             if U + V > 0:
                 stats.append({
                     "ingredient": ingredient,
@@ -204,18 +212,16 @@ def run_detection():
                     "V_ctrl_not_case": V,
                 })
 
-        # Build raw OR results without shrinkage.  Shrinkage pulls
-        # real triggers toward the group mean and inflates confounded
-        # co-occurring ingredients — bypassing it gives cleaner results
-        # when meals come from real recipes with ingredient clustering.
+        # Build raw OR results (no shrinkage - see block comment above)
         results = []
         for row in stats:
             U = row["U_case_not_ctrl"]
             V = row["V_ctrl_not_case"]
+            # Haldane correction: +0.5 prevents division by zero with sparse data
             raw_OR = (U + 0.5) / (V + 0.5)
             log_OR = math.log(raw_OR) if raw_OR > 0 else 0.0
             n = U + V
-            # Confidence based on sample size and significance
+            # Sample-size heuristic: HIGH needs 20+ meals and a positive signal
             if n >= 20 and raw_OR > 1.0:
                 confidence = "HIGH"
             elif n >= 10:
@@ -271,6 +277,7 @@ def run_detection():
 
 @app.route("/get_detection_results")
 def get_detection_results():
+    """Return the full ranked ingredient list and summary from the last run."""
     if not _shrinkage_result:
         return jsonify({"status": "no_data"})
     return jsonify({
@@ -283,6 +290,7 @@ def get_detection_results():
 
 @app.route("/get_diary_ingredients")
 def get_diary_ingredients():
+    """Return sorted list of unique ingredients in the current diary."""
     if not _diary_meals:
         return jsonify({"status": "no_data"})
     unique = set()
@@ -293,6 +301,7 @@ def get_diary_ingredients():
 
 @app.route("/get_recommendations", methods=["POST"])
 def get_recommendations():
+    """Return substitute ingredients for a query, filtered by safety and group."""
     if not _shrinkage_result:
         return jsonify({"status": "error", "message": "No trigger detection results found. Run detection first."}), 400
     result = _shrinkage_result
@@ -305,10 +314,10 @@ def get_recommendations():
 
     try:
         trigger_list = result["summary"].get("trigger_list", [])
-        # Fetch more when filtering same-group to guarantee 10 results
+        # Over-fetch when filtering by group since some results will be dropped
         fetch_count = 30 if hide_same_group else 10
 
-        # Use preference engine with explanations if shrinkage result available
+        # Prefer the preference-aware engine; fall back to basic if no results
         try:
             if _last_shrinkage_result is not None:
                 all_recommendations = PREFERENCE_ENGINE.get_substitutes_with_preferences(
@@ -341,7 +350,8 @@ def get_recommendations():
                 "no_results_reason": "not_in_vocabulary",
             })
 
-        # Check group membership and filter if needed
+        # Flag recs in the same food group as a trigger (they may share
+        # problematic properties) and optionally filter them out
         enhanced = []
         n_same_group_skipped = 0
         for rec in all_recommendations:
@@ -413,6 +423,7 @@ def get_recommendations():
 
 @app.route("/get_diary_data")
 def get_diary_data():
+    """Return full diary (meals + symptoms) sorted chronologically."""
     if not _diary_meals or not _diary_symptoms:
         return jsonify({"status": "no_data"})
 
@@ -438,6 +449,7 @@ def get_diary_data():
 
 @app.route("/save_preferences", methods=["POST"])
 def save_preferences():
+    """Persist a user's ranked substitute list for a given ingredient."""
     data = request.get_json()
     query = data.get("query_ingredient", "").strip()
     ranked = data.get("ranked_ingredients", [])
@@ -454,6 +466,7 @@ def save_preferences():
 
 @app.route("/get_preferences/<ingredient>")
 def get_preferences(ingredient):
+    """Load saved preference ranking for a specific ingredient."""
     try:
         ranking = PREFERENCE_STORE.get_ranking(ingredient)
         if ranking is None:
@@ -470,6 +483,7 @@ def get_preferences(ingredient):
 
 @app.route("/delete_preferences/<ingredient>", methods=["DELETE"])
 def delete_preferences(ingredient):
+    """Remove saved ranking for an ingredient."""
     try:
         deleted = PREFERENCE_STORE.delete_ranking(ingredient)
         if deleted:
@@ -481,6 +495,7 @@ def delete_preferences(ingredient):
 
 @app.route("/session/clear")
 def clear_session():
+    """Reset all module-level state so the user can start a fresh experiment."""
     global _diary_meals, _diary_symptoms, _diary_config, _selected_trigger
     global _shrinkage_result, _last_shrinkage_result
     _diary_meals = None
@@ -493,4 +508,5 @@ def clear_session():
 
 
 if __name__ == "__main__":
+    # Port 5001 to avoid macOS AirPlay Receiver conflict on 5000
     app.run(debug=True, port=5001)

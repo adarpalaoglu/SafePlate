@@ -2,18 +2,11 @@
 """
 Integration tests for ingredient grouping and group-aware recommendations.
 
-Tests the interaction between:
-- IngredientGroupManager (ingredient_groups.py)
-- RecommendationEngine (recommendation_engine.py)
-- The ingredient_groups.csv data file
-
-These tests replicate the validation originally in notebook
-05b_test_group_integration.ipynb but in a more robust script form.
-
-The notebook was written against the naive propagation API (Phase 2), which was
-entirely replaced by the DerSimonian & Laird shrinkage model (Phase 3).
-This script tests the parts of the API that remain stable: group lookups
-and group-aware recommendation filtering.
+Tests the interaction between IngredientGroupManager, RecommendationEngine,
+and the ingredient_groups.csv data file. Originally from notebook
+05b_test_group_integration.ipynb, converted to script form. Tests the
+stable parts of the API: group lookups and group-aware recommendation
+filtering.
 """
 
 import sys
@@ -48,10 +41,6 @@ def _make_engine() -> RecommendationEngine:
     loader = EmbeddingLoader(str(embedding_path))
     return RecommendationEngine(loader)
 
-
-# =====================================================================
-# Tests
-# =====================================================================
 
 
 def test_group_manager_loading():

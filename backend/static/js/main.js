@@ -1,9 +1,9 @@
 document.addEventListener("DOMContentLoaded", () => {
-    // --- Global state for Tab 5 preferences ---
+    // Global state for Tab 5 preferences
     let lastRecommendations = null;
     let lastQueryIngredient = null;
 
-    // --- Searchable trigger ingredient selector ---
+    // Searchable trigger ingredient selector
     let allIngredients = [];
     let selectedTriggerIngredient = "cheddar cheese";
 
@@ -116,7 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     loadAllIngredients();
 
-    // --- Parameter Tooltips ---
+    // Parameter Tooltips
     // Icons live inside <label for="..."> elements. Clicking a label
     // generates a SECOND click on the associated input, which bubbles
     // to the document handler and would immediately close the tooltip.
@@ -154,7 +154,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // --- Preset Scenarios ---
+    // Preset Scenarios
     const PRESET_SCENARIOS = {
         easy: {
             label: "Easy Detection Scenario",
@@ -205,7 +205,7 @@ document.addEventListener("DOMContentLoaded", () => {
         presetDescriptionEl.classList.add("visible");
     });
 
-    // --- Tab switching ---
+    // Tab switching
     const tabButtons = document.querySelectorAll(".tab-btn");
     const tabPanes = document.querySelectorAll(".tab-pane");
 
@@ -234,7 +234,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // --- Slider value display ---
+    // Slider value display
     const sliders = {
         n_days: { el: document.getElementById("n_days"), display: document.getElementById("n_days_val"), suffix: "" },
         trigger_effect: { el: document.getElementById("trigger_effect"), display: document.getElementById("trigger_effect_val"), suffix: "%" },
@@ -253,7 +253,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // --- Input validation: cross-field constraints ---
+    // Input validation: cross-field constraints
     sliders.ingredients_min.el.addEventListener("change", () => {
         const min = parseInt(sliders.ingredients_min.el.value);
         const max = parseInt(sliders.ingredients_max.el.value);
@@ -290,7 +290,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // --- Silent reset (used before diary generation) ---
+    // Silent reset (used before diary generation)
     async function performSilentReset() {
         try {
             await fetch("/session/clear");
@@ -324,7 +324,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (verdictBanner) verdictBanner.style.display = "none";
     }
 
-    // --- Generate Diary ---
+    // Generate Diary
     const generateBtn = document.getElementById("generate-btn");
     const statusEl = document.getElementById("generation-status");
 
@@ -376,6 +376,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     hazard_window_hours: parseInt(sliders.hazard_window.el.value),
                     diary_length_days: parseInt(sliders.n_days.el.value),
                     selected_trigger: selectedTrigger,
+                    meals_per_day_mean: parseFloat(sliders.meals_per_day.el.value),
+                    ingredients_per_meal_min: parseInt(sliders.ingredients_min.el.value),
+                    ingredients_per_meal_max: parseInt(sliders.ingredients_max.el.value),
+                    min_lag_hours: parseInt(sliders.min_lag.el.value),
                 };
 
                 // Populate diary narrative panel
@@ -416,7 +420,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // --- Reset All ---
+    // Reset All
     const resetBtn = document.getElementById("reset-all");
 
     resetBtn.addEventListener("click", async () => {
@@ -486,7 +490,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // --- Diary Display ---
+    // Diary Display
     function formatTimestamp(isoString) {
         const date = new Date(isoString);
         return date.toLocaleString("en-US", {
@@ -559,7 +563,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const bgSymptoms = symptoms.filter((s) => !s.is_trigger_caused).length;
 
         const actualExposurePct = totalMeals > 0 ? (triggerMealCount / totalMeals * 100) : 0;
-        const bgPct = totalSymptoms > 0 ? (bgSymptoms / totalSymptoms * 100) : 0;
+        const nonTriggerMeals = totalMeals - triggerMealCount;
+        const bgPct = nonTriggerMeals > 0 ? (bgSymptoms / nonTriggerMeals * 100) : 0;
         const mealsPerDay = snap.diary_length_days > 0 ? (totalMeals / snap.diary_length_days) : 0;
 
         const setExposurePct = snap.trigger_exposure_rate != null ? snap.trigger_exposure_rate : null;
@@ -567,6 +572,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const setBgPct = snap.baseline_symptom_rate != null ? snap.baseline_symptom_rate : null;
         const setHazard = snap.hazard_window_hours != null ? snap.hazard_window_hours : null;
         const setDays = snap.diary_length_days != null ? snap.diary_length_days : null;
+        const setMealsPerDay = snap.meals_per_day_mean != null ? snap.meals_per_day_mean : null;
+        const setIngMin = snap.ingredients_per_meal_min != null ? snap.ingredients_per_meal_min : null;
+        const setIngMax = snap.ingredients_per_meal_max != null ? snap.ingredients_per_meal_max : null;
+        const setMinLag = snap.min_lag_hours != null ? snap.min_lag_hours : null;
+
+        const actualIngMin = meals.length > 0 ? Math.min(...meals.map((m) => m.ingredients ? m.ingredients.length : 0)) : null;
+        const actualIngMax = meals.length > 0 ? Math.max(...meals.map((m) => m.ingredients ? m.ingredients.length : 0)) : null;
 
         function fmt(val, suffix) {
             return val != null ? `${val}${suffix}` : "Not recorded";
@@ -605,7 +617,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="pvp-row">
                     <span class="pvp-col pvp-col-name">Background Symptom Rate</span>
                     <span class="pvp-col pvp-col-set">${fmt(setBgPct, "%")}</span>
-                    <span class="pvp-col pvp-col-actual">${bgSymptoms} background symptoms out of ${totalSymptoms} total symptoms (${bgPct.toFixed(1)}%)</span>
+                    <span class="pvp-col pvp-col-actual">${bgSymptoms} background symptoms out of ${nonTriggerMeals} non-trigger meals (${bgPct.toFixed(1)}%)</span>
                 </div>
                 <div class="pvp-explanation">This controls how often symptoms occurred independently of the trigger. Higher background noise makes the trigger harder to detect because symptoms appear even without trigger exposure.</div>
                 <div class="pvp-row">
@@ -615,11 +627,35 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 <div class="pvp-explanation">This is the time window after a meal during which a symptom is considered potentially linked to that meal. The detection algorithm uses this same window when analysing your diary.</div>
                 <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Min Lag (hours)</span>
+                    <span class="pvp-col pvp-col-set">${setMinLag != null ? `${setMinLag} hour${setMinLag === 1 ? "" : "s"}` : "Not recorded"}</span>
+                    <span class="pvp-col pvp-col-actual">Symptoms could not occur sooner than ${setMinLag != null ? `${setMinLag} hour${setMinLag === 1 ? "" : "s"}` : "?"} after a meal</span>
+                </div>
+                <div class="pvp-explanation">This is the minimum delay between eating a meal and experiencing a symptom. It models the realistic physiological delay before dietary triggers take effect. The detection algorithm uses this same minimum lag when analysing your diary.</div>
+                <div class="pvp-row">
                     <span class="pvp-col pvp-col-name">Diary Length</span>
                     <span class="pvp-col pvp-col-set">${fmt(setDays, " days")}</span>
                     <span class="pvp-col pvp-col-actual">${totalMeals} meals across ${setDays != null ? setDays : "?"} days, averaging ${mealsPerDay.toFixed(1)} meals per day</span>
                 </div>
                 <div class="pvp-explanation">Longer diaries give the algorithm more observations, which generally improves detection reliability.</div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Meals Per Day (mean)</span>
+                    <span class="pvp-col pvp-col-set">${setMealsPerDay != null ? setMealsPerDay.toFixed(1) : "Not recorded"}</span>
+                    <span class="pvp-col pvp-col-actual">${totalMeals} meals across ${setDays != null ? setDays : "?"} days, averaging ${mealsPerDay.toFixed(1)} meals per day</span>
+                </div>
+                <div class="pvp-explanation">This controls how many meals are generated per day on average. The actual count varies day to day because meals are sampled from a Poisson distribution, so some days will have more meals and some fewer.</div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Min Ingredients Per Meal</span>
+                    <span class="pvp-col pvp-col-set">${setIngMin != null ? setIngMin : "Not recorded"}</span>
+                    <span class="pvp-col pvp-col-actual">${actualIngMin != null ? `The smallest meal contained ${actualIngMin} ingredient${actualIngMin === 1 ? "" : "s"}` : "No meals found"}</span>
+                </div>
+                <div class="pvp-explanation">This sets the minimum number of ingredients any single meal can contain. In real-recipe mode, meals are sampled from actual recipes, so the effective minimum depends on the recipes selected.</div>
+                <div class="pvp-row">
+                    <span class="pvp-col pvp-col-name">Max Ingredients Per Meal</span>
+                    <span class="pvp-col pvp-col-set">${setIngMax != null ? setIngMax : "Not recorded"}</span>
+                    <span class="pvp-col pvp-col-actual">${actualIngMax != null ? `The largest meal contained ${actualIngMax} ingredient${actualIngMax === 1 ? "" : "s"}` : "No meals found"}</span>
+                </div>
+                <div class="pvp-explanation">This sets the maximum number of ingredients any single meal can contain. In real-recipe mode, actual recipes may exceed this value since whole recipes are sampled rather than individual ingredients.</div>
             </div>`;
 
         panel.style.display = "";
@@ -771,7 +807,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- Detection how-to collapsible ---
+    // Detection how-to collapsible
     const howtoEl = document.getElementById("detection-howto");
     const howtoBtn = document.getElementById("detection-howto-trigger");
 
@@ -786,7 +822,7 @@ document.addEventListener("DOMContentLoaded", () => {
         sessionStorage.setItem("detection_howto_open", isOpen.toString());
     });
 
-    // --- Detection ---
+    // Detection
     const runDetectionBtn = document.getElementById("run-detection-btn");
     const rerunDetectionBtn = document.getElementById("rerun-detection-btn");
     const detectionStatusEl = document.getElementById("detection-status");
@@ -825,7 +861,7 @@ document.addEventListener("DOMContentLoaded", () => {
     runDetectionBtn.addEventListener("click", runDetection);
     rerunDetectionBtn.addEventListener("click", runDetection);
 
-    // --- Detection results state for toggle re-rendering ---
+    // Detection results state for toggle re-rendering
     let _allDetectionIngredients = null;
     let _detectionGroundTruth = null;
     let _detectionSummary = null;
@@ -940,7 +976,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Sort ALL items by confidence-weighted score: final_OR × conf × log(U+1)
         ranked.sort((a, b) => b.rankingScore - a.rankingScore);
 
-        // Default view: confidence === "HIGH" only — consistent with definition (n >= 20, OR > 1.0)
+        // Default view: confidence === "HIGH" only, consistent with definition (n >= 20, OR > 1.0)
         const topN = 10;
         let displayed;
         if (showAll) {
@@ -1052,7 +1088,7 @@ document.addEventListener("DOMContentLoaded", () => {
         banner.style.display = "";
     }
 
-    // --- Recommendations ---
+    // Recommendations
     const getSubstitutesBtn = document.getElementById("get-substitutes-btn");
     const recIngredientSearch = document.getElementById("rec-ingredient-search");
     const recDropdownList = document.getElementById("rec-dropdown-list");
@@ -1392,7 +1428,7 @@ document.addEventListener("DOMContentLoaded", () => {
         getRecommendationsFor(ingredient);
     });
 
-    // --- Tab 5: Preferences ---
+    // Tab 5: Preferences
     async function loadPreferenceInterface() {
         const emptyState = document.getElementById("pref-empty-state");
         const interfaceEl = document.getElementById("pref-interface");
@@ -1551,7 +1587,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("clear-ranking-btn").addEventListener("click", clearRanking);
     document.getElementById("back-to-recs-btn").addEventListener("click", backToRecommendations);
 
-    // --- Column Header Tooltips ---
+    // Column Header Tooltips
     (function () {
         const popup = document.getElementById("col-tooltip-popup");
         if (!popup) return;
@@ -1594,7 +1630,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }());
 
-    // --- Case/Control Pill Tooltips (delegated, for dynamically rendered timeline cards) ---
+    // Case/Control Pill Tooltips (delegated, for dynamically rendered timeline cards)
     (function () {
         const popup = document.getElementById("col-tooltip-popup");
         const tlContainer = document.getElementById("diary-timeline");
@@ -1624,7 +1660,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }());
 
-    // --- Legend Item Tooltips ---
+    // Legend Item Tooltips
     (function () {
         const popup = document.getElementById("col-tooltip-popup");
         if (!popup) return;
@@ -1649,7 +1685,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }());
 
-    // --- Guided Tour ---
+    // Guided Tour
     function initTour() {
         if (typeof Shepherd === "undefined") return;
 

@@ -1,16 +1,36 @@
 """Integrated pipeline connecting case-crossover results to shrinkage and recommendations.
 
+.. note:: Production Status
+
+   The ``detect_triggers_from_stats`` method in this module applies
+   empirical Bayes shrinkage, which was implemented, tested, and then
+   deliberately removed from the production detection path.  During
+   evaluation with real-recipe-based meals, shrinkage was found to
+   degrade detection accuracy because recipe-based ingredient clustering
+   violates the group homogeneity assumption required by the
+   DerSimonian & Laird model.
+
+   The production detection logic now lives in ``app.py``
+   (``/run_detection`` route), which uses raw Haldane-corrected odds
+   ratios with confidence-based filtering.  This module's
+   ``get_pipeline_summary`` and ``get_trigger_ingredients`` methods are
+   still called in production.  The ``ShrinkageResult`` and
+   ``FullShrinkageOutput`` data classes from
+   ``group_aware_trigger_detector.py`` are reused as data containers
+   for the raw OR results.
+
+   The shrinkage code is preserved in full because the dissertation
+   discusses both the implementation and the empirical rationale for
+   its removal.  The accompanying test suite
+   (``tests/test_shrinkage.py``) still passes.
+
 This module provides the ``SafePlatePipeline`` class, which is the primary
 integration layer for the SafePlate dietary trigger detection system.  It
-connects three independently validated components:
-
-1. **Case-crossover output** (produced by notebook 04) — per-ingredient
-   discordant counts (U, V) from the N-of-1 case-crossover analysis.
-2. **Empirical Bayes shrinkage** (``GroupAwareTriggerDetector``) — the
-   DerSimonian & Laird (1986) hierarchical model that borrows strength
-   across ingredient groups to stabilise sparse trigger estimates.
-3. **Recommendation engine** (``RecommendationEngine``) — Node2Vec
-   embedding-based ingredient similarity for finding safe substitutes.
+connects three independently validated components: case-crossover output
+(per-ingredient discordant counts from the N-of-1 analysis), empirical
+Bayes shrinkage via ``GroupAwareTriggerDetector`` (DerSimonian & Laird,
+1986), and the ``RecommendationEngine`` for Node2Vec-based ingredient
+substitution.
 
 The pipeline accepts a pandas DataFrame of case-crossover statistics,
 applies group-aware shrinkage to produce calibrated trigger risk scores,
@@ -33,7 +53,7 @@ Usage::
     )
 
     import pandas as pd
-    stats = pd.read_csv("data/processed/trigger_detection/ingredient_stats_all.csv")
+    stats = ...  # DataFrame with ingredient, U_case_not_ctrl, V_ctrl_not_case columns
 
     shrinkage_result = pipeline.detect_triggers_from_stats(stats)
     triggers = pipeline.get_trigger_ingredients(shrinkage_result)
@@ -126,10 +146,8 @@ class SafePlatePipeline:
         self._detector = GroupAwareTriggerDetector(group_manager=group_manager)
         self._engine = RecommendationEngine(embedding_loader=embedding_loader)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
+    # Not called in the production detection path (see app.py /run_detection).
+    # Preserved for reference; the dissertation discusses this implementation.
     def detect_triggers_from_stats(
         self,
         ingredient_stats: pd.DataFrame,
@@ -179,6 +197,7 @@ class SafePlatePipeline:
             propagate_to_groups=self._config.propagate_to_untested,
         )
 
+    # Called from app.py after detection to extract the trigger list
     def get_trigger_ingredients(
         self,
         shrinkage_result: FullShrinkageOutput,
@@ -216,6 +235,7 @@ class SafePlatePipeline:
         ]
         return sorted(triggers)
 
+    # Not called in production; app.py uses the preference engine instead
     def get_safe_substitutes(
         self,
         query_ingredient: str,
@@ -250,6 +270,7 @@ class SafePlatePipeline:
             top_n=n,
         )
 
+    # Called from app.py after detection to build the summary dict
     def get_pipeline_summary(
         self,
         shrinkage_result: FullShrinkageOutput,

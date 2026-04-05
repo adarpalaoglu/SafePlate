@@ -78,7 +78,7 @@ class Recommendation:
         is_safe: Whether the ingredient is safe (not a trigger).
         user_rank: Original position in user's ranking (1-indexed),
                   or None if backfilled from similarity search.
-        explanation: Detailed explanation (None in Phase 1).
+        explanation: Detailed explanation, or None if not requested.
     """
 
     ingredient: str

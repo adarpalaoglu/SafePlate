@@ -1,6 +1,6 @@
 """
-SafePlate – Embedding Training Pipeline
-========================================
+SafePlate embedding training pipeline.
+
 Standalone script that reproduces the co-occurrence graph building
 (notebook 02) and Node2Vec training (notebook 03).
 
@@ -25,9 +25,6 @@ import pandas as pd
 from gensim.models import KeyedVectors
 from node2vec import Node2Vec
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data" / "processed"
 EMB_DIR = DATA_DIR / "embeddings"
@@ -35,9 +32,7 @@ EMB_DIR = DATA_DIR / "embeddings"
 RECIPE_INGREDIENTS_PATH = DATA_DIR / "recipe_ingredients.csv"
 EDGES_PATH = DATA_DIR / "ingredient_cooccurrence_edges.csv"
 
-# ---------------------------------------------------------------------------
-# Default hyperparameters (matching iter 10 – the best config)
-# ---------------------------------------------------------------------------
+# Default hyperparameters (matching iter 10, the best config from tuning)
 DEFAULT_EMBEDDING_FILENAME = (
     "ingredient_node2vec_iter10_UNWEIGHTED_p1_q4_w10_wl80_r80_e10.txt"
 )
@@ -51,9 +46,6 @@ DEFAULT_EPOCHS = 10
 DEFAULT_SEED = 42
 
 
-# ---------------------------------------------------------------------------
-# Functions – extracted from notebooks 02 and 03
-# ---------------------------------------------------------------------------
 
 def build_cooccurrence_edges(recipes_df: pd.DataFrame) -> Counter:
     """
@@ -149,9 +141,6 @@ def train_node2vec(
     return model.wv
 
 
-# ---------------------------------------------------------------------------
-# Main pipeline
-# ---------------------------------------------------------------------------
 
 def _print(msg: str, verbose: bool) -> None:
     if verbose:
@@ -190,17 +179,13 @@ def main(
             "Run data_cleaning.py first (or: python -m safeplate.data_cleaning)."
         )
 
-    # ------------------------------------------------------------------
-    # Step 1: Load recipes
-    # ------------------------------------------------------------------
+    # Step 1: load recipes
     print("  Loading recipe ingredients ...")
     recipes_df = pd.read_csv(RECIPE_INGREDIENTS_PATH)
     recipes_df["ingredients"] = recipes_df["ingredients"].apply(ast.literal_eval)
     _print(f"  Loaded {len(recipes_df)} recipes", verbose)
 
-    # ------------------------------------------------------------------
-    # Step 2: Build co-occurrence edges
-    # ------------------------------------------------------------------
+    # Step 2: build co-occurrence edges
     print("  Building co-occurrence edges ...")
     edge_counts = build_cooccurrence_edges(recipes_df)
     _print(f"  Unique edges: {len(edge_counts)}", verbose)
@@ -214,16 +199,12 @@ def main(
     edges_df.to_csv(EDGES_PATH, index=False)
     _print(f"  Saved edges: {EDGES_PATH}", verbose)
 
-    # ------------------------------------------------------------------
-    # Step 3: Build graph (unweighted for iter 10 config)
-    # ------------------------------------------------------------------
+    # Step 3: build graph (unweighted for iter 10 config)
     print("  Building graph ...")
     G = build_graph(edge_counts, weighted=False)
     _print(f"  Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges", verbose)
 
-    # ------------------------------------------------------------------
-    # Step 4: Train Node2Vec
-    # ------------------------------------------------------------------
+    # Step 4: train Node2Vec
     print("  Training Node2Vec embeddings (this may take a few minutes) ...")
     kv = train_node2vec(
         G,
@@ -238,17 +219,12 @@ def main(
         unweighted=True,
     )
 
-    # ------------------------------------------------------------------
-    # Step 5: Save embeddings
-    # ------------------------------------------------------------------
+    # Step 5: save embeddings
     kv.save_word2vec_format(str(embedding_path))
     print(f"  Saved: {embedding_path}")
     print(f"  Vectors: {len(kv)} | dim: {kv.vector_size}")
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

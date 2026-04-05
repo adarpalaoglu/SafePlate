@@ -181,7 +181,7 @@ class RecommendationEngine:
         """
         Find the closest matching ingredient name (for suggestions).
 
-        Uses simple substring matching for now.
+        Uses simple substring and prefix matching.
         """
         all_ingredients = self._loader.get_all_ingredients()
 
@@ -215,9 +215,7 @@ class RecommendationEngine:
         """Get embedding dimension."""
         return self._loader.embedding_dim
 
-    # =========================================================================
-    # Group-Aware Methods (Step 1.5 - Trigger Detection Integration)
-    # =========================================================================
+    # Group-aware filtering methods
 
     def find_substitutes_group_aware(
         self,

@@ -10,10 +10,9 @@ import math
 import os
 import sys
 from types import ModuleType
+from typing import Optional
 
-# ───────────────────────────────────────────────────────────────────────────
-# 1.  Stub out safeplate package in sys.modules BEFORE importing the module
-# ───────────────────────────────────────────────────────────────────────────
+# Stub out safeplate package in sys.modules BEFORE importing the module
 
 def _normalize(name: str) -> str:
     return name.strip().lower()
@@ -22,7 +21,7 @@ def _normalize(name: str) -> str:
 class StubGroupManager:
     """Minimal stand-in for IngredientGroupManager."""
 
-    def __init__(self, groups: dict[str, list[str]] | None = None):
+    def __init__(self, groups: Optional[dict] = None):
         self._groups = {}
         self._ing_to_group: dict[str, str] = {}
         if groups:
@@ -82,9 +81,7 @@ _raw_estimates = _mod._raw_estimates
 
 import numpy as np
 
-# ───────────────────────────────────────────────────────────────────────────
 # Helpers
-# ───────────────────────────────────────────────────────────────────────────
 
 _failures: list[str] = []
 
@@ -112,9 +109,7 @@ def _assert(test_name: str, condition: bool, msg: str = ""):
     return True
 
 
-# ───────────────────────────────────────────────────────────────────────────
 # Tests
-# ───────────────────────────────────────────────────────────────────────────
 
 def test_1_all_triggers():
     """All group members are triggers.  One untested member."""
@@ -146,7 +141,7 @@ def test_1_all_triggers():
     ok &= _assert("T1", edam.final_OR > 2.0,
                    f"edam final_OR={edam.final_OR:.4f}, expected > 2.0")
 
-    print("TEST 1 —", "PASS" if ok else "FAIL")
+    print("TEST 1 -","PASS" if ok else "FAIL")
 
 
 def test_2_one_safe():
@@ -182,7 +177,7 @@ def test_2_one_safe():
         ok &= _assert("T2", r.final_OR > 1.0,
                        f"{name} final_OR={r.final_OR:.4f}")
 
-    print("TEST 2 —", "PASS" if ok else "FAIL")
+    print("TEST 2 -","PASS" if ok else "FAIL")
 
 
 def test_3_safe_does_not_pollute():
@@ -211,7 +206,7 @@ def test_3_safe_does_not_pollute():
                    f"ched.mu_g={ched.mu_g:.4f}, expected > 0.5 "
                    "(safe ingredient should be excluded from pool)")
 
-    print("TEST 3 —", "PASS" if ok else "FAIL")
+    print("TEST 3 -","PASS" if ok else "FAIL")
 
 
 def test_4_singleton_group():
@@ -245,7 +240,7 @@ def test_4_singleton_group():
                    f"untested final_OR={uc.final_OR:.10f} vs "
                    f"tested final_OR={ched.final_OR:.10f}")
 
-    print("TEST 4 —", "PASS" if ok else "FAIL")
+    print("TEST 4 -","PASS" if ok else "FAIL")
 
 
 def test_5_tau_zero_no_kill():
@@ -275,7 +270,7 @@ def test_5_tau_zero_no_kill():
         ok &= _assert("T5", r.evidence_source == "own_trigger",
                        f"{name}.evidence_source={r.evidence_source}")
 
-    print("TEST 5 —", "PASS" if ok else "FAIL")
+    print("TEST 5 -","PASS" if ok else "FAIL")
 
 
 def test_6_binomial_direction():
@@ -298,7 +293,7 @@ def test_6_binomial_direction():
     ok &= _assert("T6", abs(p1 - exact) < 1e-15,
                    f"P(X>=9|n=10)={p1}, expected {exact}")
 
-    print("TEST 6 —", "PASS" if ok else "FAIL")
+    print("TEST 6 -","PASS" if ok else "FAIL")
 
 
 def test_7_ungrouped():
@@ -321,7 +316,7 @@ def test_7_ungrouped():
     ok &= _assert("T7", r.tau_sq == 0.0,
                    f"tau_sq={r.tau_sq}, expected 0.0")
 
-    print("TEST 7 —", "PASS" if ok else "FAIL")
+    print("TEST 7 -","PASS" if ok else "FAIL")
 
 
 def test_8_notebook_wrapper():
@@ -343,7 +338,7 @@ def test_8_notebook_wrapper():
         ok &= _assert("T8", not np.isnan(r.final_OR),
                        f"{name} final_OR is NaN")
 
-    print("TEST 8 —", "PASS" if ok else "FAIL")
+    print("TEST 8 -","PASS" if ok else "FAIL")
 
 
 def test_9_serialisation():
@@ -383,7 +378,7 @@ def test_9_serialisation():
                        f"group dict missing keys: "
                        f"{expected_grp_keys - set(grp.keys())}")
 
-    print("TEST 9 —", "PASS" if ok else "FAIL")
+    print("TEST 9 -","PASS" if ok else "FAIL")
 
 
 def test_10_mixed_realistic():
@@ -437,12 +432,10 @@ def test_10_mixed_realistic():
     ok &= _assert("T10", ginger.group is None,
                    f"ginger.group={ginger.group}, expected None")
 
-    print("TEST 10 —", "PASS" if ok else "FAIL")
+    print("TEST 10 -","PASS" if ok else "FAIL")
 
 
-# ───────────────────────────────────────────────────────────────────────────
 # Run all tests
-# ───────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     test_1_all_triggers()

@@ -5,10 +5,9 @@ By default, uses actual recipes from the Food.com dataset for realistic
 meal patterns. Falls back to random ingredient sampling if recipe dataset
 is unavailable or trigger is too rare.
 
-The generator uses an exposure-driven causal model:
-- Meals containing true triggers have elevated probability of causing symptoms
-- Baseline symptoms occur at a lower rate independent of trigger exposure
-- Recipe-based meals maintain realistic ingredient co-occurrence patterns
+Symptom generation follows an exposure-driven causal model: meals containing
+a true trigger have elevated symptom probability (trigger_effect_strength),
+while other meals produce symptoms at a low baseline rate.
 """
 
 import ast
@@ -176,6 +175,7 @@ class DiaryGenerator:
 
         for _, row in df.iterrows():
             try:
+                # CSV stores ingredient lists as Python list literals
                 ingredients = ast.literal_eval(row["ingredients"])
             except (ValueError, SyntaxError):
                 continue
@@ -222,7 +222,7 @@ class DiaryGenerator:
         self._meals = []
         meal_id = 0
 
-        # Base date for diary
+        # Arbitrary start date for the synthetic diary
         base_date = datetime(2026, 1, 1)
 
         for day in range(self._config.n_days):
@@ -255,7 +255,7 @@ class DiaryGenerator:
         self._meals.sort(key=lambda m: m["timestamp"])
         return self._meals
 
-    def _sample_meal_ingredients(self, n_ingredients: int) -> tuple[str | None, list[str]]:
+    def _sample_meal_ingredients(self, n_ingredients: int) -> tuple[Optional[str], list[str]]:
         """Sample ingredients for a single meal.
 
         In real-recipe mode, selects an actual recipe from the appropriate
@@ -327,9 +327,10 @@ class DiaryGenerator:
     def generate_symptoms(self, meals: Optional[list[dict]] = None) -> list[dict]:
         """Generate synthetic symptom records based on meal data.
 
-        Uses an exposure-driven causal model:
-        - If meal contains a trigger: P(symptom) = trigger_effect_strength
-        - If meal has no trigger: P(symptom) = baseline_symptom_rate
+        Uses an exposure-driven causal model: if a meal contains a trigger,
+        P(symptom) = trigger_effect_strength; otherwise P(symptom) =
+        baseline_symptom_rate. Symptom timestamps are offset from the meal
+        by a random lag within [min_lag_hours, hazard_window_hours].
 
         Args:
             meals: List of meal dictionaries. If None, uses self._meals.

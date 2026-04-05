@@ -5,15 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SafePlate Test Lab</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Shepherd.js: guided tour styling -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shepherd.js/11.2.0/css/shepherd.min.css">
 </head>
 <body>
+    <!-- Single-page test lab interface with 5 tabs -->
     <div class="container">
+        <!-- Header -->
         <header>
             <h1>SafePlate Test Lab</h1>
             <button id="reset-all" class="btn-secondary">Reset All</button>
         </header>
 
+        <!-- Tab navigation -->
         <nav class="tabs">
             <button class="tab-btn active" data-tab="tab1">Configure Scenario</button>
             <button class="tab-btn" data-tab="tab2" disabled>View Diary</button>
@@ -23,7 +27,7 @@
         </nav>
 
         <div class="tab-content">
-            <!-- TAB 1: Configure Scenario -->
+            <!-- Tab 1: Configure Scenario -->
             <div id="tab1" class="tab-pane active">
                 <h2>Create Test Scenario</h2>
                 <p class="tab-intro">This is where your experiment begins. Choose a preset scenario or adjust the parameters yourself to control how the synthetic diary will be generated, including how often the trigger ingredient appears and how strongly it affects symptoms. When you are happy with your settings, click Generate Diary to move on.</p>
@@ -201,7 +205,7 @@
                 <div id="generation-status" class="status-message"></div>
             </div>
 
-            <!-- TAB 2: View Diary -->
+            <!-- Tab 2: View Diary -->
             <div id="tab2" class="tab-pane">
                 <h2>View Diary</h2>
                 <p class="tab-intro">Here you can see the food diary the system just generated for you. It contains real recipe names and ingredient lists, with a hidden trigger ingredient woven into the meals according to your parameters. Take a look at the meals and symptoms before heading to the next tab to run the analysis.</p>
@@ -263,6 +267,7 @@
                 </div>
             </div>
 
+            <!-- Tab 3: Run Detection -->
             <div id="tab3" class="tab-pane">
                 <h2>Run Detection</h2>
                 <p class="tab-intro">This is where the system analyses your diary to find which ingredient is most likely responsible for the symptoms. It uses a statistical method that compares how often each ingredient appeared before a symptom versus in symptom-free periods. Click Run Detection Analysis to see the results and check whether the system found the hidden trigger you set up in Tab 1.</p>
@@ -352,6 +357,7 @@
                 </div>
             </div>
 
+            <!-- Tab 4: Find Safe Substitutes -->
             <div id="tab4" class="tab-pane">
                 <h2>Find Safe Substitutes</h2>
                 <p class="tab-intro">Now that the system has identified suspicious ingredients, this tab helps you find safe alternatives that avoid them. Recommendations are based on how ingredients appear together across hundreds of thousands of real recipes, so the suggestions are genuine culinary alternatives rather than random replacements. Click any detected trigger or search for any ingredient to get started.</p>
@@ -417,6 +423,7 @@
                 </div>
             </div>
 
+            <!-- Tab 5: Rank Your Preferences -->
             <div id="tab5" class="tab-pane">
                 <h2>Rank Your Preferences</h2>
 
@@ -457,6 +464,8 @@
         </div>
     </div>
 
+    <!-- Scripts and floating UI elements -->
+    <!-- Server run ID: used by the tour to detect server restarts -->
     <script>const SAFEPLATE_RUN_ID = "{{ server_run_id }}";</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/shepherd.js/11.2.0/js/shepherd.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>

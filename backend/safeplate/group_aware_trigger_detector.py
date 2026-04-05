@@ -1,5 +1,23 @@
 """Group-aware trigger detection via empirical Bayes hierarchical shrinkage.
 
+.. note:: Production Status
+
+   This module implements the empirical Bayes hierarchical shrinkage model
+   (DerSimonian & Laird, 1986).  It was implemented, tested (see
+   ``tests/test_shrinkage.py``), and then deliberately removed from the
+   production detection path.  When meals are sampled from real recipes,
+   ingredient clustering within recipes violates the group homogeneity
+   assumption that shrinkage relies on, causing genuine trigger signals to
+   be pulled toward the group mean and inflating confounded co-occurring
+   ingredients.  The full rationale for the removal is discussed in the
+   dissertation.
+
+   The ``ShrinkageResult`` and ``FullShrinkageOutput`` data classes defined
+   here ARE still used in production (in ``app.py``) as data containers for
+   raw Haldane-corrected odds ratio results.  The shrinkage-specific fields
+   on these classes (``weight``, ``mu_g``, ``tau_sq``) are set to dummy
+   values (0.0) in the production path.
+
 This module implements a two-level empirical Bayes model for dietary trigger
 detection that borrows strength across ingredients within the same food group.
 The group-level hyperparameters (mean log-OR μ_g and between-ingredient
@@ -8,17 +26,16 @@ estimator, and each ingredient's raw log-OR is then shrunk toward the group
 mean in proportion to its own uncertainty.
 
 Two guard rules are applied before shrinkage:
-    Rule 1 — PROTECT SAFE:  Ingredients with statistically significant
-             evidence in the safety direction are excluded from the
-             shrinkage pool so they cannot be overridden by a trigger-heavy
-             group.
-    Rule 2 — SHRINK EVERYTHING ELSE:  All remaining tested ingredients
-             contribute to and receive shrinkage from the group mean.
-             Untested group members inherit the group mean directly.
+    Rule 1 (protect safe): ingredients with statistically significant
+        evidence in the safety direction are excluded from the shrinkage
+        pool so they cannot be overridden by a trigger-heavy group.
+    Rule 2 (shrink everything else): all remaining tested ingredients
+        contribute to and receive shrinkage from the group mean. Untested
+        group members inherit the group mean directly.
 
 Reference:
     DerSimonian, R. & Laird, N. (1986). Meta-analysis in clinical trials.
-    Controlled Clinical Trials, 7(3), 177–188.
+    Controlled Clinical Trials, 7(3), 177-188.
 """
 
 from dataclasses import dataclass, field
@@ -31,9 +48,6 @@ from .ingredient_groups import IngredientGroupManager, get_group_manager
 from .utils import normalize_ingredient_name
 
 
-# ---------------------------------------------------------------------------
-# Exact binomial survival function
-# ---------------------------------------------------------------------------
 
 def _binomial_survival(v: int, n: int) -> float:
     """Compute P(X >= v | X ~ Binomial(n, 0.5)) exactly.
@@ -62,9 +76,6 @@ def _binomial_survival(v: int, n: int) -> float:
     return total / (2 ** n)
 
 
-# ---------------------------------------------------------------------------
-# Per-ingredient raw statistics
-# ---------------------------------------------------------------------------
 
 def _raw_estimates(U: int, V: int) -> tuple[float, float, float]:
     """Compute Haldane-corrected log-OR, its variance, and the raw OR.
@@ -90,9 +101,7 @@ def _raw_estimates(U: int, V: int) -> tuple[float, float, float]:
     return theta_hat, sigma_sq, raw_OR
 
 
-# ---------------------------------------------------------------------------
-# Rule 1 — Protect Safe
-# ---------------------------------------------------------------------------
+# Rule 1: protect safe
 
 def _is_protected_safe(U: int, V: int, raw_OR: float) -> bool:
     """Test whether an ingredient qualifies for Rule 1 protection.
@@ -147,9 +156,6 @@ def _is_own_trigger(U: int, V: int, raw_OR: float) -> bool:
     return p_trigger < 0.05 and raw_OR > 1.0
 
 
-# ---------------------------------------------------------------------------
-# DerSimonian & Laird estimation
-# ---------------------------------------------------------------------------
 
 def _dersimonian_laird(
     thetas: list[float],
@@ -159,7 +165,7 @@ def _dersimonian_laird(
 
     This is a point-estimation (method-of-moments) procedure for the
     hyperparameters of the empirical Bayes model.  It is NOT a fully
-    Bayesian computation — no prior distribution is placed on (μ_g, τ²).
+    Bayesian computation - no prior distribution is placed on (μ_g, τ²).
 
     Inputs are the non-protected pool members only.  Protected-safe
     ingredients have already been removed before this function is called.
@@ -206,13 +212,13 @@ def _dersimonian_laird(
     return mu_g, tau_sq
 
 
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
-
 @dataclass
 class ShrinkageResult:
-    """Per-ingredient output from the shrinkage model."""
+    """Per-ingredient output from the shrinkage model.
+
+    Also used in production as a plain data container for raw OR results,
+    with shrinkage fields (weight, mu_g, tau_sq) set to 0.0.
+    """
 
     ingredient: str
     U: int
@@ -306,10 +312,6 @@ class FullShrinkageOutput:
         return [r for r in self.ingredients if r.confidence == "HIGH"]
 
 
-# ---------------------------------------------------------------------------
-# Main detector class
-# ---------------------------------------------------------------------------
-
 class GroupAwareTriggerDetector:
     """Two-level empirical Bayes trigger detector with group shrinkage.
 
@@ -343,9 +345,7 @@ class GroupAwareTriggerDetector:
             FullShrinkageOutput containing per-ingredient and per-group
             results.
         """
-        # ── Phase 1: compute raw estimates for every tested ingredient ──
-
-        # Keyed by normalised name.  Preserves insertion order (Python 3.7+).
+        # Phase 1: compute raw estimates for every tested ingredient
         tested: dict[str, dict] = {}
         for name, U, V in ingredient_triggers:
             norm = normalize_ingredient_name(name)
@@ -360,18 +360,16 @@ class GroupAwareTriggerDetector:
                 "group": group,
             }
 
-        # ── Phase 2: Rule 1 — identify protected-safe ingredients ──
+        # Phase 2: Rule 1 - identify protected-safe ingredients
 
         protected_set: set[str] = set()
         for name, d in tested.items():
             if _is_protected_safe(d["U"], d["V"], d["raw_OR"]):
                 protected_set.add(name)
 
-        # ── Phase 3: build shrinkage pools per group ──
-        #
-        # Grouped ingredients use their group_head as pool key.
-        # Ungrouped ingredients each form their own singleton pool
-        # keyed by a (None, name) tuple so they stay separate.
+        # Phase 3: build shrinkage pools per group.
+        # Grouped ingredients use their group_head as pool key. Ungrouped
+        # ingredients each get a singleton pool keyed by (None, name).
 
         # pool_key → list of (name, θ̂, σ²)
         pools: dict = {}
@@ -396,7 +394,7 @@ class GroupAwareTriggerDetector:
             else:
                 pools[key].append((name, d["theta_hat"], d["sigma_sq"]))
 
-        # ── Phase 4: D&L estimation per pool ──
+        # Phase 4: D&L estimation per pool
 
         # pool_key → (μ_g, τ²)
         dl_estimates: dict = {}
@@ -405,7 +403,7 @@ class GroupAwareTriggerDetector:
             sigmas = [s for _, _, s in pool]
             dl_estimates[key] = _dersimonian_laird(thetas, sigmas)
 
-        # ── Phase 5: compute final scores for tested ingredients ──
+        # Phase 5: compute final scores for tested ingredients
 
         results: list[ShrinkageResult] = []
 
@@ -470,7 +468,7 @@ class GroupAwareTriggerDetector:
                 protected=False,
             ))
 
-        # ── Phase 6: untested group members ──
+        # Phase 6: untested group members inherit the group mean
 
         if all_group_members is not None:
             seen = set(tested.keys())
@@ -507,7 +505,7 @@ class GroupAwareTriggerDetector:
                         protected=False,
                     ))
 
-        # ── Phase 7: build GroupShrinkageResult for real groups ──
+        # Phase 7: build GroupShrinkageResult for real groups
 
         group_results: list[GroupShrinkageResult] = []
         for key in pools:

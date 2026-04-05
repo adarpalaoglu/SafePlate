@@ -1,6 +1,6 @@
 """
-SafePlate – Data Cleaning Pipeline
-===================================
+SafePlate data cleaning pipeline.
+
 Standalone script that reproduces the full cleaning pipeline from
 notebooks/01_load_raw_data.ipynb.
 
@@ -24,19 +24,15 @@ import re
 import string
 from collections import Counter, defaultdict
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Paths (relative to project root)
-# ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 RAW_RECIPES_PATH = PROJECT_ROOT / "data" / "raw" / "RAW_recipes.csv"
 OUT_DIR = PROJECT_ROOT / "data" / "processed"
 
-# ---------------------------------------------------------------------------
-# Constants – copied verbatim from notebook 01 cells
-# ---------------------------------------------------------------------------
+# Constants copied from notebook 01 cells
 
 # Cell fbe51bd4
 GENERIC_DESCRIPTORS = {
@@ -162,9 +158,6 @@ MIN_INGREDIENT_FREQUENCY = 20
 MAX_INGREDIENT_FREQUENCY = 60000
 MIN_INGREDIENTS_PER_RECIPE = 3
 
-# ---------------------------------------------------------------------------
-# Functions – extracted from notebook cells
-# ---------------------------------------------------------------------------
 
 def remove_descriptors_from_ingredient(ingredient: str) -> str:
     """Remove descriptor words and phrases from a single ingredient string."""
@@ -232,7 +225,7 @@ def filter_by_frequency_and_background(
     frequency_lookup: dict,
     min_freq: int,
     max_freq: int,
-    always_remove_set: set | None = None,
+    always_remove_set: Optional[set] = None,
 ) -> list:
     """Remove ingredients that are too rare, too common, or background noise."""
     if always_remove_set is None:
@@ -333,7 +326,7 @@ def choose_group_token(
     ingredient: str,
     token_freqs: dict,
     stop_tokens: set,
-) -> str | None:
+) -> Optional[str]:
     """
     Choose a single 'head' token for an ingredient string, based on
     splitting on spaces, ignoring grouping stopwords, and picking
@@ -357,9 +350,6 @@ def choose_group_token(
     return max(candidates, key=lambda x: token_freqs.get(x, 0))
 
 
-# ---------------------------------------------------------------------------
-# Main pipeline
-# ---------------------------------------------------------------------------
 
 def _print(msg: str, verbose: bool) -> None:
     if verbose:
@@ -384,9 +374,7 @@ def main(force: bool = False, verbose: bool = False) -> None:
         print("  [SKIP] Cleaned data already exists. Use --force to regenerate.")
         return
 
-    # ------------------------------------------------------------------
-    # A.0 – Load raw data
-    # ------------------------------------------------------------------
+    # Load raw data
     if not RAW_RECIPES_PATH.exists():
         raise FileNotFoundError(
             f"Raw recipes file not found: {RAW_RECIPES_PATH}\n"
@@ -397,9 +385,7 @@ def main(force: bool = False, verbose: bool = False) -> None:
     df = pd.read_csv(RAW_RECIPES_PATH)
     _print(f"  Loaded {len(df)} recipes with {df.shape[1]} columns", verbose)
 
-    # ------------------------------------------------------------------
-    # A.1 – Parse ingredient strings into lists
-    # ------------------------------------------------------------------
+    # Parse ingredient strings into lists
     df["ingredients_raw"] = df["ingredients"]
 
     parse_failures = 0
@@ -416,9 +402,7 @@ def main(force: bool = False, verbose: bool = False) -> None:
     if parse_failures > 0:
         _print(f"  Ingredient parsing failures: {parse_failures}", verbose)
 
-    # ------------------------------------------------------------------
-    # A.2 – Lowercase
-    # ------------------------------------------------------------------
+    # Lowercase
     def _lowercase_list(ingredients_list):
         if not isinstance(ingredients_list, list):
             return []
@@ -426,21 +410,15 @@ def main(force: bool = False, verbose: bool = False) -> None:
 
     df["ingredients"] = df["ingredients"].apply(_lowercase_list)
 
-    # ------------------------------------------------------------------
-    # Step 1 – Remove descriptors
-    # ------------------------------------------------------------------
+    # Step 1: remove descriptors
     _print("  Step 1: Removing descriptors ...", verbose)
     df["ingredients"] = df["ingredients"].apply(remove_descriptors_from_list)
 
-    # ------------------------------------------------------------------
-    # Step 2 – Plural -> singular normalisation
-    # ------------------------------------------------------------------
+    # Step 2: plural -> singular normalisation
     _print("  Step 2: Normalising plurals ...", verbose)
     df["ingredients"] = df["ingredients"].apply(normalise_plurals_in_list)
 
-    # ------------------------------------------------------------------
-    # Step 3 – Frequency filtering
-    # ------------------------------------------------------------------
+    # Step 3: frequency filtering
     _print("  Step 3: Filtering by frequency ...", verbose)
 
     all_ingredients = []
@@ -456,9 +434,7 @@ def main(force: bool = False, verbose: bool = False) -> None:
         )
     )
 
-    # ------------------------------------------------------------------
-    # Step 4 – Deduplicate + build initial vocabulary
-    # ------------------------------------------------------------------
+    # Step 4: deduplicate + build initial vocabulary
     _print("  Step 4: Deduplicating ...", verbose)
     df["ingredients"] = df["ingredients"].apply(deduplicate_and_sort_ingredients)
 
@@ -468,17 +444,13 @@ def main(force: bool = False, verbose: bool = False) -> None:
         final_all.extend(ing_list)
     final_ingredient_counts = Counter(final_all)
 
-    # ------------------------------------------------------------------
-    # Step 5 – Remove recipes with too few ingredients
-    # ------------------------------------------------------------------
+    # Step 5: remove recipes with too few ingredients
     _print("  Step 5: Removing short recipes ...", verbose)
     df["n_clean_ingredients"] = df["ingredients"].apply(len)
     df = df[df["n_clean_ingredients"] >= MIN_INGREDIENTS_PER_RECIPE].reset_index(drop=True)
     _print(f"  Recipes remaining: {len(df)}", verbose)
 
-    # ------------------------------------------------------------------
-    # Step 6 – Compound ingredient handling
-    # ------------------------------------------------------------------
+    # Step 6: compound ingredient handling
     _print("  Step 6: Handling compound ingredients ...", verbose)
 
     compound_all = []
@@ -514,9 +486,7 @@ def main(force: bool = False, verbose: bool = False) -> None:
 
     _print(f"  Vocabulary size: {len(ingredient_vocab_df)}", verbose)
 
-    # ------------------------------------------------------------------
-    # Step 7 – Token frequencies for grouping
-    # ------------------------------------------------------------------
+    # Step 7: token frequencies for grouping
     _print("  Step 7: Building token frequencies for grouping ...", verbose)
 
     token_counts: Counter = Counter()
@@ -525,9 +495,7 @@ def main(force: bool = False, verbose: bool = False) -> None:
             for token in ing.split():
                 token_counts[token] += 1
 
-    # ------------------------------------------------------------------
-    # Step 8 – Ingredient grouping
-    # ------------------------------------------------------------------
+    # Step 8: ingredient grouping
     _print("  Step 8: Grouping ingredients ...", verbose)
 
     group_to_ingredients: dict[str, list[str]] = defaultdict(list)
@@ -539,9 +507,7 @@ def main(force: bool = False, verbose: bool = False) -> None:
         group_to_ingredients[group_name].append(ingredient)
         ingredient_to_group[ingredient] = group_name
 
-    # ------------------------------------------------------------------
     # Save outputs
-    # ------------------------------------------------------------------
     _print("  Saving outputs ...", verbose)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -593,9 +559,6 @@ def main(force: bool = False, verbose: bool = False) -> None:
     print(f"  Saved: {metadata_path}")
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

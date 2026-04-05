@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SafePlate Data Preparation Pipeline
-====================================
+SafePlate data preparation pipeline.
+
 Orchestrator script that runs the full data pipeline:
 
   Step 1: Clean raw recipes and build ingredient groups
@@ -68,9 +68,7 @@ def main() -> None:
 
     t0 = time.time()
 
-    # ------------------------------------------------------------------
-    # Step 1: Data cleaning
-    # ------------------------------------------------------------------
+    # Step 1: data cleaning
     print("\n[Step 1/2] Data Cleaning")
     print("-" * 40)
     try:
@@ -79,9 +77,7 @@ def main() -> None:
         print(f"\n  ERROR: {e}")
         sys.exit(1)
 
-    # ------------------------------------------------------------------
-    # Step 2: Embedding training
-    # ------------------------------------------------------------------
+    # Step 2: embedding training
     print("\n[Step 2/2] Embedding Training")
     print("-" * 40)
     try:
@@ -90,9 +86,6 @@ def main() -> None:
         print(f"\n  ERROR: {e}")
         sys.exit(1)
 
-    # ------------------------------------------------------------------
-    # Summary
-    # ------------------------------------------------------------------
     elapsed = time.time() - t0
     print("\n" + "=" * 60)
     print(f"  Pipeline complete ({elapsed:.1f}s)")
