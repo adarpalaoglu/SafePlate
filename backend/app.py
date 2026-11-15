@@ -1,9 +1,8 @@
 """SafePlate Test Lab - Flask entry point for trigger detection evaluation."""
 
-import math
+import os
 import re
 import uuid
-from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 from safeplate.diary_generator import DiaryGenerator, DiaryGeneratorConfig
@@ -18,6 +17,7 @@ from safeplate.group_aware_trigger_detector import (
     FullShrinkageOutput,
 )
 from safeplate.recommendation_engine import IngredientNotFoundError
+from safeplate.detection import score_ingredients
 
 app = Flask(__name__)
 
@@ -180,65 +180,26 @@ def run_detection():
         # ShrinkageResult/FullShrinkageOutput are reused as data containers with
         # shrinkage-specific fields (weight, mu_g, tau_sq) set to dummy values.
 
-        # Collect unique ingredients
-        all_ingredients = set()
-        for meal in meals:
-            all_ingredients.update(meal["ingredients"])
-
-        # Simplified co-occurrence count (not the full matched case-crossover with
-        # control windows from the progress report, but effective for synthetic data)
         config = _diary_config or {}
-        hazard_window = config.get("hazard_window_hours", 6)
-        min_lag = config.get("min_lag_hours", 1)
+        rows = score_ingredients(
+            meals,
+            symptoms,
+            hazard_window_hours=config.get("hazard_window_hours", 6),
+            min_lag_hours=config.get("min_lag_hours", 1),
+        )
 
-        stats = []
-        for ingredient in all_ingredients:
-            meals_with_ing = [m for m in meals if ingredient in m["ingredients"]]
-            symptom_count = 0
-            for meal in meals_with_ing:
-                meal_time = datetime.fromisoformat(meal["timestamp"])
-                for symptom in symptoms:
-                    symptom_time = datetime.fromisoformat(symptom["timestamp"])
-                    diff_hours = (symptom_time - meal_time).total_seconds() / 3600
-                    if min_lag <= diff_hours <= hazard_window:
-                        symptom_count += 1
-
-            U = symptom_count                              # meals with ingredient followed by symptom
-            V = max(len(meals_with_ing) - symptom_count, 0)  # meals with ingredient, no symptom
-            if U + V > 0:
-                stats.append({
-                    "ingredient": ingredient,
-                    "U_case_not_ctrl": U,
-                    "V_ctrl_not_case": V,
-                })
-
-        # Build raw OR results (no shrinkage - see block comment above)
         results = []
-        for row in stats:
-            U = row["U_case_not_ctrl"]
-            V = row["V_ctrl_not_case"]
-            # Haldane correction: +0.5 prevents division by zero with sparse data
-            raw_OR = (U + 0.5) / (V + 0.5)
-            log_OR = math.log(raw_OR) if raw_OR > 0 else 0.0
-            n = U + V
-            # Sample-size heuristic: HIGH needs 20+ meals and a positive signal
-            if n >= 20 and raw_OR > 1.0:
-                confidence = "HIGH"
-            elif n >= 10:
-                confidence = "MEDIUM"
-            else:
-                confidence = "LOW"
-
-            group = GROUP_MANAGER.get_group(row["ingredient"])
+        for row in rows:
+            n = row["U"] + row["V"]
             results.append(ShrinkageResult(
                 ingredient=row["ingredient"],
-                U=U, V=V,
-                raw_log_OR=log_OR, raw_OR=raw_OR,
+                U=row["U"], V=row["V"],
+                raw_log_OR=row["log_odds_ratio"], raw_OR=row["odds_ratio"],
                 sigma_sq=1.0 / max(n, 1),
-                group=group,
-                final_log_OR=log_OR, final_OR=raw_OR,
+                group=GROUP_MANAGER.get_group(row["ingredient"]),
+                final_log_OR=row["log_odds_ratio"], final_OR=row["odds_ratio"],
                 weight=0.0, mu_g=0.0, tau_sq=0.0,
-                confidence=confidence,
+                confidence=row["confidence"],
                 evidence_source="raw_case_crossover",
                 protected=False,
             ))
@@ -509,4 +470,5 @@ def clear_session():
 
 if __name__ == "__main__":
     # Port 5001 to avoid macOS AirPlay Receiver conflict on 5000
-    app.run(debug=True, port=5001)
+    # Debug mode only when asked for: FLASK_DEBUG=1 python backend/app.py
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1", port=5001)

@@ -1,6 +1,6 @@
 # Data Directory
 
-Pre-computed data files are included in the submission so markers can run the application immediately after installing dependencies, without waiting for data processing (embedding training in particular takes significant time).
+The data files are not tracked in git because of their size. Put `RAW_recipes.csv` in `raw/` (see the main README) and generate the rest.
 
 All files can be regenerated from scratch using:
 

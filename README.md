@@ -1,36 +1,35 @@
 # SafePlate
 
-SafePlate is a web-based test lab for evaluating dietary trigger detection algorithms. It generates synthetic food diaries using real recipes from the Food.com dataset (~220K cleaned recipes), runs co-occurrence-based trigger detection using Haldane-corrected odds ratios with confidence-based filtering, and recommends safe substitute ingredients via Node2Vec embeddings trained on recipe co-occurrence patterns. This is a CS310 dissertation research prototype (University of Warwick), not a consumer or clinical tool.
+SafePlate is a web-based test lab for evaluating dietary trigger detection algorithms. It generates synthetic food diaries using real recipes from the Food.com dataset (~220K cleaned recipes), runs co-occurrence-based trigger detection using Haldane-corrected odds ratios with confidence-based filtering, and recommends safe substitute ingredients via Node2Vec embeddings trained on recipe co-occurrence patterns. It was my final-year dissertation project (CS310) at the University of Warwick. It is a research prototype, not a consumer or clinical tool.
 
 ## Setup
 
-### Option A: Quick Start (Recommended)
+SafePlate needs Python 3.12 and the Food.com recipe dataset. The dataset is too large for this repository, so you download it once and build the processed files yourself.
 
-The submission includes all processed data files (cleaned recipes, ingredient groups, co-occurrence edges, and trained Node2Vec embeddings), so no data preparation is needed.
-
-```bash
-python3 -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r backend/requirements.txt
-python backend/app.py
-```
-
-Open `http://localhost:5001` in a browser. A guided tour launches automatically on first visit.
-
-### Option B: Regenerate All Data From Scratch (Optional)
-
-Only needed if you want to verify the full data pipeline. This cleans ~230K recipes and trains Node2Vec embeddings, which takes significant time.
+1. Download `RAW_recipes.csv` from the [Food.com Recipes and Interactions](https://www.kaggle.com/datasets/shuyangli94/food-com-recipes-and-user-interactions) dataset on Kaggle (free account needed) and put it in `data/raw/`.
+2. Install and build the data. Cleaning about 230K recipes and training the Node2Vec embeddings takes a while the first time.
 
 ```bash
-python3 -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r backend/requirements.txt
-rm -rf data/processed/
 python backend/scripts/prepare_data.py --force-all --verbose
+```
+
+3. Start the app and open `http://localhost:5001`. A guided tour starts on the first visit.
+
+```bash
 python backend/app.py
 ```
 
-Open `http://localhost:5001` in a browser.
+## Tests
+
+```bash
+pip install pytest
+python -m pytest tests
+```
+
+`tests/test_detection.py` covers the detection the app runs (exposure counting, the Haldane correction, confidence levels and a planted trigger) and needs no data. `tests/test_group_integration.py` needs the processed data. `tests/test_shrinkage.py` covers the shrinkage model kept for reference.
 
 ## How It Works
 
@@ -47,13 +46,13 @@ The UI is organised into five tabs:
 ```
 SafePlate/
 ├── backend/
-│   ├── app.py                              # Flask app; production detection route (/run_detection)
-│   │                                       #   uses raw Haldane-corrected ORs — not shrinkage
+│   ├── app.py                              # Flask app and routes
 │   ├── requirements.txt
 │   ├── scripts/
 │   │   └── prepare_data.py                 # Data pipeline orchestrator (cleaning + embeddings)
 │   ├── safeplate/
 │   │   ├── __init__.py
+│   │   ├── detection.py                    # Production detection: Haldane-corrected odds ratios
 │   │   ├── diary_generator.py              # Synthetic diary generation using real Food.com recipes
 │   │   ├── case_crossover_simulator.py     # Case-crossover counting (U/V discordant pairs)
 │   │   ├── group_aware_trigger_detector.py # Empirical Bayes shrinkage (DerSimonian & Laird);
@@ -86,6 +85,7 @@ SafePlate/
 │       ├── recipe_ingredients.csv
 │       └── embeddings/
 ├── tests/
+│   ├── test_detection.py                   # Unit tests for the production detection
 │   ├── test_shrinkage.py                   # Unit tests for the shrinkage model
 │   └── test_group_integration.py           # Integration tests for group-aware detection
 └── .gitignore

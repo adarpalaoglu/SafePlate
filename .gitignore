@@ -213,3 +213,6 @@ data/raw/
 data/processed/
 data/synthetic/
 .env
+
+# macOS
+.DS_Store
