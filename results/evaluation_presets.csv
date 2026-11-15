@@ -1,0 +1,301 @@
+preset,trigger,seed,rank
+Easy,egg,0,1
+Easy,egg,1,1
+Easy,egg,2,4
+Easy,egg,3,1
+Easy,egg,4,1
+Easy,egg,5,1
+Easy,egg,6,1
+Easy,egg,7,2
+Easy,egg,8,1
+Easy,egg,9,1
+Easy,milk,0,1
+Easy,milk,1,1
+Easy,milk,2,1
+Easy,milk,3,1
+Easy,milk,4,1
+Easy,milk,5,1
+Easy,milk,6,1
+Easy,milk,7,1
+Easy,milk,8,1
+Easy,milk,9,1
+Easy,cheddar cheese,0,1
+Easy,cheddar cheese,1,1
+Easy,cheddar cheese,2,1
+Easy,cheddar cheese,3,1
+Easy,cheddar cheese,4,1
+Easy,cheddar cheese,5,1
+Easy,cheddar cheese,6,1
+Easy,cheddar cheese,7,1
+Easy,cheddar cheese,8,1
+Easy,cheddar cheese,9,1
+Easy,parmesan cheese,0,1
+Easy,parmesan cheese,1,1
+Easy,parmesan cheese,2,1
+Easy,parmesan cheese,3,1
+Easy,parmesan cheese,4,1
+Easy,parmesan cheese,5,1
+Easy,parmesan cheese,6,1
+Easy,parmesan cheese,7,1
+Easy,parmesan cheese,8,1
+Easy,parmesan cheese,9,1
+Easy,tomato,0,1
+Easy,tomato,1,1
+Easy,tomato,2,1
+Easy,tomato,3,1
+Easy,tomato,4,1
+Easy,tomato,5,1
+Easy,tomato,6,2
+Easy,tomato,7,1
+Easy,tomato,8,1
+Easy,tomato,9,1
+Easy,chicken,0,1
+Easy,chicken,1,1
+Easy,chicken,2,1
+Easy,chicken,3,1
+Easy,chicken,4,1
+Easy,chicken,5,1
+Easy,chicken,6,1
+Easy,chicken,7,1
+Easy,chicken,8,1
+Easy,chicken,9,1
+Easy,garlic,0,1
+Easy,garlic,1,2
+Easy,garlic,2,1
+Easy,garlic,3,1
+Easy,garlic,4,1
+Easy,garlic,5,1
+Easy,garlic,6,1
+Easy,garlic,7,1
+Easy,garlic,8,1
+Easy,garlic,9,1
+Easy,mushroom,0,1
+Easy,mushroom,1,1
+Easy,mushroom,2,1
+Easy,mushroom,3,1
+Easy,mushroom,4,1
+Easy,mushroom,5,1
+Easy,mushroom,6,1
+Easy,mushroom,7,1
+Easy,mushroom,8,1
+Easy,mushroom,9,1
+Easy,soy sauce,0,1
+Easy,soy sauce,1,1
+Easy,soy sauce,2,1
+Easy,soy sauce,3,1
+Easy,soy sauce,4,1
+Easy,soy sauce,5,1
+Easy,soy sauce,6,1
+Easy,soy sauce,7,1
+Easy,soy sauce,8,2
+Easy,soy sauce,9,1
+Easy,cinnamon,0,1
+Easy,cinnamon,1,1
+Easy,cinnamon,2,1
+Easy,cinnamon,3,1
+Easy,cinnamon,4,1
+Easy,cinnamon,5,2
+Easy,cinnamon,6,1
+Easy,cinnamon,7,1
+Easy,cinnamon,8,1
+Easy,cinnamon,9,1
+Balanced,egg,0,1
+Balanced,egg,1,1
+Balanced,egg,2,1
+Balanced,egg,3,1
+Balanced,egg,4,1
+Balanced,egg,5,1
+Balanced,egg,6,1
+Balanced,egg,7,1
+Balanced,egg,8,1
+Balanced,egg,9,1
+Balanced,milk,0,1
+Balanced,milk,1,1
+Balanced,milk,2,1
+Balanced,milk,3,1
+Balanced,milk,4,1
+Balanced,milk,5,1
+Balanced,milk,6,1
+Balanced,milk,7,1
+Balanced,milk,8,1
+Balanced,milk,9,1
+Balanced,cheddar cheese,0,1
+Balanced,cheddar cheese,1,1
+Balanced,cheddar cheese,2,1
+Balanced,cheddar cheese,3,1
+Balanced,cheddar cheese,4,1
+Balanced,cheddar cheese,5,1
+Balanced,cheddar cheese,6,1
+Balanced,cheddar cheese,7,1
+Balanced,cheddar cheese,8,1
+Balanced,cheddar cheese,9,1
+Balanced,parmesan cheese,0,1
+Balanced,parmesan cheese,1,1
+Balanced,parmesan cheese,2,1
+Balanced,parmesan cheese,3,1
+Balanced,parmesan cheese,4,1
+Balanced,parmesan cheese,5,1
+Balanced,parmesan cheese,6,1
+Balanced,parmesan cheese,7,1
+Balanced,parmesan cheese,8,1
+Balanced,parmesan cheese,9,1
+Balanced,tomato,0,1
+Balanced,tomato,1,1
+Balanced,tomato,2,1
+Balanced,tomato,3,1
+Balanced,tomato,4,1
+Balanced,tomato,5,1
+Balanced,tomato,6,1
+Balanced,tomato,7,1
+Balanced,tomato,8,1
+Balanced,tomato,9,1
+Balanced,chicken,0,1
+Balanced,chicken,1,1
+Balanced,chicken,2,1
+Balanced,chicken,3,1
+Balanced,chicken,4,1
+Balanced,chicken,5,1
+Balanced,chicken,6,1
+Balanced,chicken,7,1
+Balanced,chicken,8,1
+Balanced,chicken,9,1
+Balanced,garlic,0,1
+Balanced,garlic,1,1
+Balanced,garlic,2,1
+Balanced,garlic,3,1
+Balanced,garlic,4,1
+Balanced,garlic,5,1
+Balanced,garlic,6,1
+Balanced,garlic,7,1
+Balanced,garlic,8,1
+Balanced,garlic,9,1
+Balanced,mushroom,0,1
+Balanced,mushroom,1,1
+Balanced,mushroom,2,1
+Balanced,mushroom,3,1
+Balanced,mushroom,4,1
+Balanced,mushroom,5,1
+Balanced,mushroom,6,1
+Balanced,mushroom,7,1
+Balanced,mushroom,8,1
+Balanced,mushroom,9,1
+Balanced,soy sauce,0,1
+Balanced,soy sauce,1,2
+Balanced,soy sauce,2,1
+Balanced,soy sauce,3,1
+Balanced,soy sauce,4,1
+Balanced,soy sauce,5,1
+Balanced,soy sauce,6,1
+Balanced,soy sauce,7,1
+Balanced,soy sauce,8,1
+Balanced,soy sauce,9,1
+Balanced,cinnamon,0,1
+Balanced,cinnamon,1,1
+Balanced,cinnamon,2,1
+Balanced,cinnamon,3,1
+Balanced,cinnamon,4,1
+Balanced,cinnamon,5,1
+Balanced,cinnamon,6,1
+Balanced,cinnamon,7,1
+Balanced,cinnamon,8,1
+Balanced,cinnamon,9,1
+Difficult,egg,0,1
+Difficult,egg,1,1
+Difficult,egg,2,2
+Difficult,egg,3,1
+Difficult,egg,4,1
+Difficult,egg,5,1
+Difficult,egg,6,1
+Difficult,egg,7,1
+Difficult,egg,8,1
+Difficult,egg,9,1
+Difficult,milk,0,1
+Difficult,milk,1,1
+Difficult,milk,2,1
+Difficult,milk,3,1
+Difficult,milk,4,1
+Difficult,milk,5,2
+Difficult,milk,6,1
+Difficult,milk,7,1
+Difficult,milk,8,1
+Difficult,milk,9,1
+Difficult,cheddar cheese,0,1
+Difficult,cheddar cheese,1,1
+Difficult,cheddar cheese,2,2
+Difficult,cheddar cheese,3,1
+Difficult,cheddar cheese,4,1
+Difficult,cheddar cheese,5,1
+Difficult,cheddar cheese,6,3
+Difficult,cheddar cheese,7,1
+Difficult,cheddar cheese,8,1
+Difficult,cheddar cheese,9,1
+Difficult,parmesan cheese,0,1
+Difficult,parmesan cheese,1,1
+Difficult,parmesan cheese,2,1
+Difficult,parmesan cheese,3,2
+Difficult,parmesan cheese,4,1
+Difficult,parmesan cheese,5,1
+Difficult,parmesan cheese,6,1
+Difficult,parmesan cheese,7,2
+Difficult,parmesan cheese,8,1
+Difficult,parmesan cheese,9,1
+Difficult,tomato,0,1
+Difficult,tomato,1,1
+Difficult,tomato,2,2
+Difficult,tomato,3,1
+Difficult,tomato,4,1
+Difficult,tomato,5,1
+Difficult,tomato,6,1
+Difficult,tomato,7,1
+Difficult,tomato,8,1
+Difficult,tomato,9,1
+Difficult,chicken,0,1
+Difficult,chicken,1,1
+Difficult,chicken,2,1
+Difficult,chicken,3,1
+Difficult,chicken,4,1
+Difficult,chicken,5,1
+Difficult,chicken,6,1
+Difficult,chicken,7,1
+Difficult,chicken,8,1
+Difficult,chicken,9,1
+Difficult,garlic,0,1
+Difficult,garlic,1,1
+Difficult,garlic,2,2
+Difficult,garlic,3,2
+Difficult,garlic,4,1
+Difficult,garlic,5,1
+Difficult,garlic,6,2
+Difficult,garlic,7,1
+Difficult,garlic,8,1
+Difficult,garlic,9,1
+Difficult,mushroom,0,1
+Difficult,mushroom,1,1
+Difficult,mushroom,2,2
+Difficult,mushroom,3,1
+Difficult,mushroom,4,1
+Difficult,mushroom,5,1
+Difficult,mushroom,6,1
+Difficult,mushroom,7,1
+Difficult,mushroom,8,1
+Difficult,mushroom,9,1
+Difficult,soy sauce,0,1
+Difficult,soy sauce,1,1
+Difficult,soy sauce,2,3
+Difficult,soy sauce,3,2
+Difficult,soy sauce,4,1
+Difficult,soy sauce,5,1
+Difficult,soy sauce,6,1
+Difficult,soy sauce,7,1
+Difficult,soy sauce,8,1
+Difficult,soy sauce,9,1
+Difficult,cinnamon,0,1
+Difficult,cinnamon,1,1
+Difficult,cinnamon,2,1
+Difficult,cinnamon,3,2
+Difficult,cinnamon,4,1
+Difficult,cinnamon,5,1
+Difficult,cinnamon,6,1
+Difficult,cinnamon,7,1
+Difficult,cinnamon,8,1
+Difficult,cinnamon,9,1

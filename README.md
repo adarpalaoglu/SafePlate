@@ -2,6 +2,18 @@
 
 SafePlate is a web-based test lab for evaluating dietary trigger detection algorithms. It generates synthetic food diaries using real recipes from the Food.com dataset (~220K cleaned recipes), runs co-occurrence-based trigger detection using Haldane-corrected odds ratios with confidence-based filtering, and recommends safe substitute ingredients via Node2Vec embeddings trained on recipe co-occurrence patterns. It was my final-year dissertation project (CS310) at the University of Warwick. It is a research prototype, not a consumer or clinical tool.
 
+## Results
+
+How often does the detection find the hidden trigger? `backend/scripts/evaluate_presets.py` generates diaries from real recipes for each preset in the app, with 10 different trigger ingredients (egg, milk, cheddar cheese, parmesan cheese, tomato, chicken, garlic, mushroom, soy sauce, cinnamon) and 10 random seeds each. It ranks the ingredients exactly as the app does. Raw runs are in `results/evaluation_presets.csv`.
+
+| Preset | Diary | Runs | Trigger ranked 1st | In top 3 |
+|---|---|---|---|---|
+| Easy | 90 days, 50% exposure, 70% effect, 1% baseline | 100 | 94% | 99% |
+| Balanced | 60 days, 35% exposure, 70% effect, 4% baseline | 100 | 99% | 100% |
+| Difficult | 45 days, 25% exposure, 40% effect, 8% baseline | 100 | 86% | 100% |
+
+The misses are mostly ingredients that share recipes with the trigger. For example, garlic was beaten in 3 of 10 Difficult runs. Surprisingly, Easy does slightly worse than Balanced: with a 1% baseline, almost every symptom follows the trigger, so ingredients that often appear with it score highly too. These are synthetic diaries with a single trigger, so the numbers show how well the method separates a known signal, not how it would do on real people.
+
 ## Setup
 
 SafePlate needs Python 3.12 and the Food.com recipe dataset. The dataset is too large for this repository, so you download it once and build the processed files yourself.
@@ -49,7 +61,8 @@ SafePlate/
 │   ├── app.py                              # Flask app and routes
 │   ├── requirements.txt
 │   ├── scripts/
-│   │   └── prepare_data.py                 # Data pipeline orchestrator (cleaning + embeddings)
+│   │   ├── prepare_data.py                 # Data pipeline orchestrator (cleaning + embeddings)
+│   │   └── evaluate_presets.py             # Detection accuracy per preset (Results table)
 │   ├── safeplate/
 │   │   ├── __init__.py
 │   │   ├── detection.py                    # Production detection: Haldane-corrected odds ratios
@@ -84,6 +97,8 @@ SafePlate/
 │       ├── ingredient_cooccurrence_edges.csv
 │       ├── recipe_ingredients.csv
 │       └── embeddings/
+├── results/
+│   └── evaluation_presets.csv              # Raw runs behind the Results table
 ├── tests/
 │   ├── test_detection.py                   # Unit tests for the production detection
 │   ├── test_shrinkage.py                   # Unit tests for the shrinkage model
